@@ -1,17 +1,19 @@
-import os
+import os, operator
 from functools import reduce
 
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import lit, when
-from utils.schema import CICIDS2017_SCHEMA
+from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.functions import lit, when, col
+from utils.schema import CIC_IDS_2017_T_SCHEMA
 
 
-input_dir_path = os.path.join("data", "cic_ids_2017_raw")
-output_dir_path = os.path.join("data", "1A_merge_cicids2017")
+
+
+input_dir_path = os.path.join("..", "data", "traffic_labelled", "cic_ids_2017_t_raw")
+output_dir_path = os.path.join("..", "data", "traffic_labelled" ,"1A_merge_cic_ids_t_2017")
 
 
 spark = SparkSession.builder \
-    .appName("CICIDS2017 Merge") \
+    .appName("CIC_IDS_T_2017 Merge") \
     .master("local[*]") \
     .getOrCreate()
 
@@ -30,7 +32,7 @@ for file_name in csv_files:
     input_file_path = os.path.join(input_dir_path, file_name)
 
     df = spark.read.format("csv") \
-        .schema(CICIDS2017_SCHEMA) \
+        .schema(CIC_IDS_2017_T_SCHEMA) \
         .option("header", "false") \
         .load(input_file_path)
 
@@ -70,7 +72,7 @@ total_rows = final_df.count()
 print(f"\nTotal rows after union: {total_rows}")
 
 
-output_path = os.path.join(output_dir_path, "1A_merged_cicids2017.csv")
+output_path = os.path.join(output_dir_path, "1A_merged_cic_ids_t_2017.csv")
 
 final_df.coalesce(1) \
     .write \

@@ -206,10 +206,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-raw_data/
-
 .idea/
 .venv/
 
-data/cic_ids_2017_raw/*
-data/1A_merge_cicids2017/*
+data/traffic_labelled/*
+data/machine_learning/*

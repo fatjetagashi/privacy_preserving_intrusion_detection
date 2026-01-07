@@ -3,27 +3,27 @@ from functools import reduce
 import operator
 
 from pyspark.sql import SparkSession, functions as F
-from utils.schema import CICIDS2017_FULL_SCHEMA
+from utils.schema import CIC_IDS_2017_T_FULL_SCHEMA
 
 
-input_dir_path = os.path.join("data", "1A_merge_cicids2017")
-output_dir_path = os.path.join("data", "1B_clean_cicids2017")
+input_dir_path = os.path.join("..", "data", "traffic_labelled", "1A_merge_cic_ids_t_2017")
+output_dir_path = os.path.join(".." , "data", "traffic_labelled", "1B_clean_cic_ids_t_2017")
 
 
 spark = SparkSession.builder \
-    .appName("CICIDS2017 Cleaning 1B") \
+    .appName("CIC_IDS_T_2017 Cleaning 1B") \
     .master("local[*]") \
     .getOrCreate()
 
 spark.sparkContext.setLogLevel("ERROR")
 
 
-input_path = os.path.join(input_dir_path, "1A_merged_cicids2017.csv")
+input_path = os.path.join(input_dir_path, "1A_merged_cic_ids_t_2017.csv")
 
 df = (
     spark.read
         .format("csv")
-        .schema(CICIDS2017_FULL_SCHEMA)
+        .schema(CIC_IDS_2017_T_FULL_SCHEMA)
         .option("header", True)
         .option("sep", ",")
         .load(input_path)
@@ -105,7 +105,7 @@ for new, old in inv_rename_map.items():
         df = df.withColumnRenamed(new, old)
 
 
-output_path = os.path.join(output_dir_path, "1B_clean_cicids2017.csv")
+output_path = os.path.join(output_dir_path, "1B_clean_cic_ids_t_2017.csv")
 
 df.coalesce(1) \
     .write \
