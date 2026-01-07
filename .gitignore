@@ -212,4 +212,4 @@ raw_data/
 .venv/
 
 data/cic_ids_2017_raw/*
-data/cic_ids_2017_merged/*
+data/1A_merge_cicids2017/*

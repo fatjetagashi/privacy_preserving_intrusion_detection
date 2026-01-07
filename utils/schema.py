@@ -81,3 +81,9 @@ CICIDS2017_SCHEMA = StructType([
     StructField(" Idle Min", DoubleType(), True),
     StructField(" Label", StringType(), True),
 ])
+
+CICIDS2017_FULL_SCHEMA = StructType([
+    *CICIDS2017_SCHEMA.fields,
+    StructField("day", StringType(), True),
+    StructField("time_of_day", StringType(), True),
+])

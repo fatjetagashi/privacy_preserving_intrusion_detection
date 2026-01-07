@@ -7,7 +7,7 @@ from utils.schema import CICIDS2017_SCHEMA
 
 
 input_dir_path = os.path.join("data", "cic_ids_2017_raw")
-output_dir_path = os.path.join("data", "cic_ids_2017_merged")
+output_dir_path = os.path.join("data", "1A_merge_cicids2017")
 
 
 spark = SparkSession.builder \
@@ -70,7 +70,7 @@ total_rows = final_df.count()
 print(f"\nTotal rows after union: {total_rows}")
 
 
-output_path = os.path.join(output_dir_path, "MachineLearningCSV.csv")
+output_path = os.path.join(output_dir_path, "1A_merged_cicids2017.csv")
 
 final_df.coalesce(1) \
     .write \
