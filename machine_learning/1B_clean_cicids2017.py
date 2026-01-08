@@ -6,8 +6,8 @@ from pyspark.sql import SparkSession, functions as F
 from utils.schema import CIC_IDS_2017_M_FULL_SCHEMA
 
 
-input_dir_path = os.path.join("data", "machine_learning", "1A_merge_cic_ids_m_2017")
-output_dir_path = os.path.join("data", "machine_learning", "1B_clean_cic_ids_m_2017")
+input_dir_path = os.path.join("..", "data", "machine_learning", "1A_merge_cic_ids_m_2017")
+output_dir_path = os.path.join("..", "data", "machine_learning", "1B_clean_cic_ids_m_2017")
 
 
 spark = SparkSession.builder \

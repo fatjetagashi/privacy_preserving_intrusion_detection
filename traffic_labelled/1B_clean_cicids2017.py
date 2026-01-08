@@ -6,8 +6,8 @@ from pyspark.sql import SparkSession, functions as F
 from utils.schema import CIC_IDS_2017_T_FULL_SCHEMA
 
 
-input_dir_path = os.path.join( "data", "traffic_labelled", "1A_merge_cic_ids_t_2017")
-output_dir_path = os.path.join( "data", "traffic_labelled", "1B_clean_cic_ids_t_2017")
+input_dir_path = os.path.join("..", "data", "traffic_labelled", "1A_merge_cic_ids_t_2017")
+output_dir_path = os.path.join("..", "data", "traffic_labelled", "1B_clean_cic_ids_t_2017")
 
 
 spark = SparkSession.builder \
@@ -27,11 +27,13 @@ df = (
         .schema(CIC_IDS_2017_T_FULL_SCHEMA)
         .option("header", True)
         .option("sep", ",")
+        .option("timestampFormat", "yyyy-MM-dd HH:mm:ss")
         .load(input_path)
 )
 
-before_rows = df.count()
+df = df.withColumn(" Timestamp", F.date_format(F.col(" Timestamp"), "yyyy-MM-dd HH:mm:ss"))
 
+before_rows = df.count()
 
 dot_cols = [c for c in df.columns if "." in c]
 for c in dot_cols:

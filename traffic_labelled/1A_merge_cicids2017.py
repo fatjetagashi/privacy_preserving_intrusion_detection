@@ -34,7 +34,10 @@ for file_name in csv_files:
     df = spark.read.format("csv") \
         .schema(CIC_IDS_2017_T_SCHEMA) \
         .option("header", "false") \
+        .option("timestampFormat", "d/M/yyyy H:mm") \
         .load(input_file_path)
+
+    df = df.withColumn(" Timestamp", F.date_format(F.col(" Timestamp"), "yyyy-MM-dd HH:mm:ss"))
 
     df = df.filter(df[" Destination Port"].isNotNull())
     count_rows = df.count()
