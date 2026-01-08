@@ -6,8 +6,8 @@ from pyspark.sql import SparkSession, functions as F
 from utils.schema import CIC_IDS_2017_M_FULL_SCHEMA
 
 
-input_dir_path = os.path.join("..", "data", "machine_learning", "1A_merge_cic_ids_m_2017")
-output_dir_path = os.path.join("..", "data", "machine_learning", "1B_clean_cic_ids_m_2017")
+input_dir_path = os.path.join("data", "machine_learning", "1A_merge_cic_ids_m_2017")
+output_dir_path = os.path.join("data", "machine_learning", "1B_clean_cic_ids_m_2017")
 
 
 spark = SparkSession.builder \
@@ -15,8 +15,9 @@ spark = SparkSession.builder \
     .master("local[*]") \
     .getOrCreate()
 
+spark.conf.set("spark.sql.codegen.wholeStage", "false")
+spark.conf.set("spark.sql.codegen.factoryMode", "NO_CODEGEN")
 spark.sparkContext.setLogLevel("ERROR")
-
 
 input_path = os.path.join(input_dir_path, "1A_merge_cic_ids_m_2017.csv")
 
@@ -33,9 +34,8 @@ before_rows = df.count()
 
 
 dot_cols = [c for c in df.columns if "." in c]
-rename_map = {c: c.replace(".", "_") for c in dot_cols}
-for old, new in rename_map.items():
-    df = df.withColumnRenamed(old, new)
+for c in dot_cols:
+    df = df.withColumnRenamed(c, c.replace(".", "_"))
 
 
 all_null = reduce(operator.and_, [F.col(c).isNull() for c in df.columns])
@@ -45,64 +45,36 @@ df = df.filter(F.col(" Label").isNotNull() & (F.trim(F.col(" Label")) != ""))
 
 df = df.replace(float("inf"), None).replace(float("-inf"), None)
 
-numeric_cols = [
-    c for c, t in df.dtypes
-    if t in ("double", "int", "bigint", "float")
-]
+numeric_cols = [c for c, t in df.dtypes if t in ("double", "int", "bigint", "float")]
 
 for c in numeric_cols:
     df = df.withColumn(c, F.when(F.isnan(F.col(c)), None).otherwise(F.col(c)))
 
-null_counts_df = df.select([
-    F.sum(F.when(F.col(c).isNull(), 1).otherwise(0)).alias(c)
-    for c in numeric_cols
-])
-
-print("\nNull counts (numeric columns):")
-null_counts_df.show(truncate=False)
-
-
 df = df.dropna(subset=numeric_cols)
 
 
-dropped = set()
-numeric_cols_only = [
-    c for c, t in df.dtypes
-    if t in ("double", "int", "bigint", "float")
-]
-cols = numeric_cols_only
+col_a = " Fwd Header Length"
+col_b = " Fwd Header Length_1"
 
-for i in range(len(cols)):
-    for j in range(i + 1, len(cols)):
-        c1, c2 = cols[i], cols[j]
-        if c1 in dropped or c2 in dropped:
-            continue
-        mismatch = df.filter(
-            (F.col(c1).isNull() != F.col(c2).isNull()) |
-            (F.col(c1).isNotNull() & F.col(c2).isNotNull() & (F.col(c1) != F.col(c2)))
-        ).limit(1).count()
-        if mismatch == 0:
-            df = df.drop(c2)
-            dropped.add(c2)
+if col_a in df.columns and col_b in df.columns:
+    mismatch = df.filter(
+        (F.col(col_a).isNull() != F.col(col_b).isNull()) |
+        (F.col(col_a).isNotNull() & F.col(col_b).isNotNull() & (F.col(col_a) != F.col(col_b)))
+    ).limit(1).count()
 
-if dropped:
-    print("\nDropped duplicate columns:")
-    for c in sorted(dropped):
-        print(c)
+    if mismatch == 0:
+        df = df.drop(col_b)
+        print(f"\nDropped duplicate column: {col_b}")
+    else:
+        print(f"\nColumns are not identical: '{col_a}' vs '{col_b}'")
 else:
-    print("\nNo duplicate columns found")
+    print("\nDuplicate-check columns not found")
 
 
 after_rows = df.count()
 print("\nRows before cleaning:", before_rows)
 print("Rows after cleaning:", after_rows)
 print("Rows dropped:", before_rows - after_rows)
-
-
-inv_rename_map = {v: k for k, v in rename_map.items()}
-for new, old in inv_rename_map.items():
-    if new in df.columns and new not in dropped:
-        df = df.withColumnRenamed(new, old)
 
 
 output_path = os.path.join(output_dir_path, "1B_clean_cic_ids_m_2017.csv")
