@@ -3,8 +3,7 @@ from functools import reduce
 import operator
 
 from pyspark.sql import SparkSession, functions as F
-from utils.schema import CIC_IDS_2017_T_FULL_SCHEMA
-
+from utils.schema import CIC_IDS_2017_T_FULL_SCHEMA, CIC_IDS_2017_M_FULL_CLEAN_SCHEMA
 
 input_dir_path = os.path.join("..", "data", "machine_learning", "1B_clean_cic_ids_m_2017")
 output_dir_path = os.path.join("..", "data", "machine_learning", "A_sample")
@@ -22,7 +21,7 @@ input_path = os.path.join(input_dir_path, "1B_clean_cic_ids_m_2017.csv")
 df = (
     spark.read
         .format("csv")
-        .schema(CIC_IDS_2017_T_FULL_SCHEMA)
+        .schema(CIC_IDS_2017_M_FULL_CLEAN_SCHEMA)
         .option("header", True)
         .option("sep", ",")
         .load(input_path)

@@ -88,6 +88,8 @@ CIC_IDS_2017_M_FULL_SCHEMA = StructType([
     StructField("time_of_day", StringType(), True),
 ])
 
+CIC_IDS_2017_M_FULL_CLEAN_SCHEMA = StructType([f for f in CIC_IDS_2017_M_FULL_SCHEMA.fields if f.name !=  " Fwd Header Length.1"])
+
 CIC_IDS_2017_T_SCHEMA = StructType([
     StructField("Flow ID", StringType(), True),
     StructField(" Source IP", StringType(), True),
@@ -181,3 +183,5 @@ CIC_IDS_2017_T_FULL_SCHEMA = StructType([
     StructField("day", StringType(), True),
     StructField("time_of_day", StringType(), True),
 ])
+
+CIC_IDS_2017_T_FULL_CLEAN_SCHEMA = StructType([f for f in CIC_IDS_2017_T_FULL_SCHEMA.fields if f.name !=  " Fwd Header Length.1"])

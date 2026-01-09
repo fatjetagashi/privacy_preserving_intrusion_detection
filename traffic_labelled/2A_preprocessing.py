@@ -2,19 +2,20 @@ import os
 from functools import reduce
 import operator
 
-from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import SparkSession, functions as F, Window
 from utils.schema import CIC_IDS_2017_T_FULL_SCHEMA, CIC_IDS_2017_T_FULL_CLEAN_SCHEMA
 
 input_dir_path = os.path.join("..", "data", "traffic_labelled", "1B_clean_cic_ids_t_2017")
-output_dir_path = os.path.join("..", "data", "traffic_labelled", "A_sample")
-
+# output_dir_path = os.path.join("..", "data", "traffic_labelled", "1B_clean_cic_ids_t_2017")
+#
 
 spark = SparkSession.builder \
-    .appName("CIC_IDS_T_2017 Cleaning 1B") \
+    .appName("CIC_IDS_T_2017 PREPROCESSING 2A") \
     .master("local[*]") \
     .getOrCreate()
 
 spark.sparkContext.setLogLevel("ERROR")
+
 
 input_path = os.path.join(input_dir_path, "1B_clean_cic_ids_t_2017.csv")
 
@@ -28,19 +29,19 @@ df = (
         .load(input_path)
 )
 
-df = df.orderBy(F.rand()).limit(1000)
+df = df.withColumn(" Timestamp", F.date_format(F.col(" Timestamp"), "yyyy-MM-dd HH:mm:ss"))
 
-output_path = os.path.join(output_dir_path, "A_sample.csv")
+df = df.withColumn(
+    "y",
+    F.when(F.col(" Label") == "BENIGN", F.lit(0)).otherwise(F.lit(1))
+)
 
-# df.groupBy(" Label").count().orderBy(F.desc("count")).show(30, False)
-# df.groupBy("day").count().show()
-# df.groupBy("time_of_day").count().show()
+df = df.withColumn("window_id", F.floor(F.unix_timestamp(" Timestamp") / F.lit(300)))
 
+w = Window.partitionBy("day").orderBy(" Timestamp")
 
-df.coalesce(1) \
-    .write \
-    .mode("overwrite") \
-    .option("header", True) \
-    .csv(output_path)
+df = df.withColumn("node_id", F.row_number().over(w) - 1)
+
+df.show(n=20, truncate=False)
 
 spark.stop()
