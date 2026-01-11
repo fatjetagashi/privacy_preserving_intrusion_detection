@@ -31,10 +31,15 @@ row_counts = []
 for file_name in csv_files:
     input_file_path = os.path.join(input_dir_path, file_name)
 
+    if "Monday" in file_name:
+        ts_fmt = "dd/MM/yyyy HH:mm:ss"
+    else:
+        ts_fmt = "d/M/yyyy H:mm"
+
     df = spark.read.format("csv") \
         .schema(CIC_IDS_2017_T_SCHEMA) \
         .option("header", "false") \
-        .option("timestampFormat", "d/M/yyyy H:mm") \
+        .option("timestampFormat", ts_fmt) \
         .load(input_file_path)
 
     df = df.withColumn(" Timestamp", F.date_format(F.col(" Timestamp"), "yyyy-MM-dd HH:mm:ss"))
