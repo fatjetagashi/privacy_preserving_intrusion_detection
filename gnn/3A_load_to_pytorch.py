@@ -96,3 +96,10 @@ test_ds  = CICWindowGraphDataset("test")
 train_loader = DataLoader(train_ds, batch_size=1, shuffle=True)
 val_loader   = DataLoader(val_ds, batch_size=1, shuffle=False)
 test_loader  = DataLoader(test_ds, batch_size=1, shuffle=False)
+
+
+batch = next(iter(train_loader))
+print(batch)
+print("x:", batch.x.shape)
+print("edge_index:", batch.edge_index.shape)
+print("y:", batch.y.shape)
