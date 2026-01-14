@@ -87,19 +87,27 @@ seqs = (
 )
 
 seqs = seqs.withColumn("tokens", F.expr(f"slice(tokens_full, 1, {MAX_LEN})")).drop("tokens_full")
+
 seqs = seqs.withColumn("seq_len", F.size("tokens"))
 seqs = seqs.filter(F.col("seq_len") >= F.lit(MIN_LEN))
 
-seqs = seqs.withColumn("r", F.rand(42))
-w = Window.partitionBy("day", "seq_y").orderBy("r")
-seqs = seqs.withColumn("p", F.percent_rank().over(w))
+split_key = F.pmod(
+    F.abs(
+        F.hash(
+            F.col("day"),
+            F.col("seq_y"),
+            F.col("seq_id")
+        )
+    ),
+    F.lit(100)
+)
 
 seqs = seqs.withColumn(
     "split",
-    F.when(F.col("p") < 0.70, F.lit("train"))
-    .when(F.col("p") < 0.85, F.lit("val"))
-    .otherwise(F.lit("test")),
-).drop("r", "p")
+    F.when(split_key < 70, F.lit("train"))
+     .when(split_key < 85, F.lit("val"))
+     .otherwise(F.lit("test"))
+)
 
 out_seq = os.path.join(output_dir_path, "sequences")
 out_meta = os.path.join(output_dir_path, "sequences_meta")
