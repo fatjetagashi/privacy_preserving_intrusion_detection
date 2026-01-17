@@ -174,6 +174,6 @@ print("train samples:", len(train_ds))
 print("val samples:", len(val_ds))
 print("test samples:", len(test_ds))
 
-test_meta = pd.read_parquet(META_DIR, columns=["seq_len"]) if "seq_len" else None
+test_meta = pd.read_parquet(META_DIR, columns=["seq_len"])
 meta_test = meta_df[meta_df["split"] == "test"]
 print("test attack %:", round((meta_test["seq_y"] == 1).mean() * 100, 2))
