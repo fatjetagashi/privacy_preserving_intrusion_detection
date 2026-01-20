@@ -93,13 +93,19 @@ train_ds = CICWindowGraphDataset("train")
 val_ds   = CICWindowGraphDataset("val")
 test_ds  = CICWindowGraphDataset("test")
 
-train_loader = DataLoader(train_ds, batch_size=1, shuffle=True)
-val_loader   = DataLoader(val_ds, batch_size=1, shuffle=False)
-test_loader  = DataLoader(test_ds, batch_size=1, shuffle=False)
+def build_loaders(batch_size=1):
+    train_ds = CICWindowGraphDataset("train")
+    val_ds   = CICWindowGraphDataset("val")
+    test_ds  = CICWindowGraphDataset("test")
 
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False)
+    test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False)
 
-batch = next(iter(train_loader))
-print(batch)
-print("x:", batch.x.shape)
-print("edge_index:", batch.edge_index.shape)
-print("y:", batch.y.shape)
+    return train_loader, val_loader, test_loader
+
+# batch = next(iter(train_loader))
+# print(batch)
+# print("x:", batch.x.shape)
+# print("edge_index:", batch.edge_index.shape)
+# print("y:", batch.y.shape)
