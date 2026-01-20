@@ -28,9 +28,9 @@ def bucketize_fixed(col_name, edges, prefix):
         expr = F.when(cond, F.lit(f"{prefix}B{i}")) if expr is None else expr.when(cond, F.lit(f"{prefix}B{i}"))
     return expr.otherwise(F.lit(f"{prefix}B{len(edges)-1}"))
 
-DUR_EDGES = [0, 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000]
-PKT_EDGES = [0, 1, 2, 5, 10, 20, 50, 100, 1_000]
-BYTES_EDGES = [0, 1, 64, 512, 4_096, 65_536, 1_048_576, 10_485_760]
+DUR_EDGES = [0, 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000, 120_000_000]
+PKT_EDGES = [0, 1, 2, 5, 10, 20, 50, 100, 1_000, 10_000, 100_000, 300_000]
+BYTES_EDGES = [0, 1, 64, 512, 4_096, 65_536, 1_048_576, 10_485_760, 104_857_600, 524_288_000, 700_000_000]
 
 df = (
     spark.read.format("csv")
@@ -66,6 +66,8 @@ df = df.withColumn(
 
 base_tok = F.concat_ws("_", F.col("Protocol").cast("string"), F.col("Destination Port").cast("string"))
 
+df = df.withColumn("Flow Duration", F.when(F.col("Flow Duration") < 0, 0).otherwise(F.col("Flow Duration")))
+
 dur_bin = bucketize_fixed("Flow Duration", DUR_EDGES, "DUR_")
 fwdp_bin = bucketize_fixed("Total Fwd Packets", PKT_EDGES, "FWD_")
 bwdp_bin = bucketize_fixed("Total Backward Packets", PKT_EDGES, "BWD_")
@@ -73,7 +75,21 @@ bwdp_bin = bucketize_fixed("Total Backward Packets", PKT_EDGES, "BWD_")
 df = df.withColumn("BYTES_TOTAL", F.col("Total Length of Fwd Packets") + F.col("Total Length of Bwd Packets"))
 byt_bin = bucketize_fixed("BYTES_TOTAL", BYTES_EDGES, "BYT_")
 
-df = df.withColumn("token", F.concat_ws("|", base_tok, dur_bin, fwdp_bin, bwdp_bin, byt_bin))
+PPS_EDGES = [0, 1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000]
+
+df = df.withColumn("Flow Packets/s", F.when(F.col("Flow Packets/s").isNull(), 0).otherwise(F.col("Flow Packets/s")))
+df = df.withColumn("Flow Packets/s", F.when(F.col("Flow Packets/s") < 0, 0).otherwise(F.col("Flow Packets/s")))
+
+pps_bin = bucketize_fixed("Flow Packets/s", PPS_EDGES, "PPS_")
+
+flag_sig = F.concat(
+    F.when(F.col("SYN Flag Count") > 0, F.lit("S")).otherwise(F.lit("")),
+    F.when(F.col("ACK Flag Count") > 0, F.lit("A")).otherwise(F.lit("")),
+    F.when(F.col("RST Flag Count") > 0, F.lit("R")).otherwise(F.lit(""))
+)
+flag_sig = F.when(flag_sig == F.lit(""), F.lit("N")).otherwise(flag_sig)
+
+df = df.withColumn("token", F.concat_ws("|", base_tok, dur_bin, fwdp_bin, bwdp_bin, byt_bin, pps_bin, flag_sig))
 
 seqs = (
     df.groupBy("seq_id", "day", "window_id", "entity")
@@ -85,7 +101,6 @@ seqs = (
     .withColumn("tokens_full", F.expr("transform(tok_sorted, x -> x.tok)"))
     .drop("tok_structs", "tok_sorted")
 )
-
 seqs = seqs.withColumn("tokens", F.expr(f"slice(tokens_full, 1, {MAX_LEN})")).drop("tokens_full")
 
 seqs = seqs.withColumn("seq_len", F.size("tokens"))
@@ -94,8 +109,6 @@ seqs = seqs.filter(F.col("seq_len") >= F.lit(MIN_LEN))
 split_key = F.pmod(
     F.abs(
         F.hash(
-            F.col("day"),
-            F.col("seq_y"),
             F.col("seq_id")
         )
     ),
