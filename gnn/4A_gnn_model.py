@@ -3,8 +3,13 @@ import torch.nn.functional as F
 from torch_geometric.nn import SAGEConv
 import numpy as np
 
+
+
 # Optional but recommended for metrics
 from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score, average_precision_score
+from _3A_load_to_pytorch import build_loaders
+
+train_loader, val_loader, test_loader = build_loaders(batch_size=1)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Device:", device)
