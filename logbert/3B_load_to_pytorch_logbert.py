@@ -11,7 +11,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
-ROOT = os.path.join("data", "traffic_labelled", "2B_preprocessed_logbert")
+ROOT = os.path.join("..", "data", "traffic_labelled", "2B_preprocessed_logbert")
 SEQS_DIR = os.path.join(ROOT, "sequences")
 META_DIR = os.path.join(ROOT, "sequences_meta")
 

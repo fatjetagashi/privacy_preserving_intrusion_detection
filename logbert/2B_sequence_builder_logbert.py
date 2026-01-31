@@ -3,15 +3,15 @@ from pyspark.sql import SparkSession, functions as F, Window
 from utils.schema import CIC_IDS_2017_T_FULL_CLEAN_SCHEMA
 
 
-input_dir_path = os.path.join("data", "traffic_labelled", "1B_clean_cic_ids_t_2017")
-output_dir_path = os.path.join("data", "traffic_labelled", "2B_preprocessed_logbert")
+input_dir_path = os.path.join("..", "data", "traffic_labelled", "1B_clean_cic_ids_t_2017")
+output_dir_path = os.path.join("..", "data", "traffic_labelled", "2B_preprocessed_logbert")
 input_path = os.path.join(input_dir_path, "1B_clean_cic_ids_t_2017.csv")
 
 spark = (
     SparkSession.builder
     .appName("CIC_IDS_T_2017 SEQUENCE BUILDER")
-    .master("local[*]")
-    .config("spark.sql.shuffle.partitions", "200")
+    .master("local[4]")
+    .config("spark.driver.memory", "12g")
     .getOrCreate()
 )
 spark.sparkContext.setLogLevel("ERROR")

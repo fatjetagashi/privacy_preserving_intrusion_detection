@@ -25,7 +25,7 @@ from sklearn.metrics import (
 
 @dataclass
 class Config:
-    root: str = os.path.join("data", "traffic_labelled", "2B_preprocessed_logbert")
+    root: str = os.path.join("..", "data", "traffic_labelled", "2B_preprocessed_logbert")
     max_len: int = 256
     min_freq: int = 2
 
@@ -361,7 +361,7 @@ def score_sequences(model, loader, pad_id, mask_id, vocab_size, K: int) -> pd.Da
                     "day": days[i],
                     "entity": entities[i],
                     "seq_y": int(seq_y[i]),
-                    "score": float(seq_loss_avg[i]),
+                    "score": float(-seq_loss_avg[i]),
                 }
             )
 
@@ -469,7 +469,8 @@ def main():
 
     metrics_main = compute_metrics(y_true, y_score, thr_main)
 
-    thr_candidates = [95.0, 97.5, 99.0]
+    thr_candidates = [70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 97.5, 99.0]
+
     threshold_sweep = []
     for p in thr_candidates:
         thr = float(np.percentile(val_scores["score"].values, p))
