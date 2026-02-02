@@ -16,9 +16,9 @@ spark = (
 )
 spark.sparkContext.setLogLevel("ERROR")
 
-MAX_LEN = 256
+MAX_LEN_BUILD = 2000
 MIN_LEN = 5
-WINDOW_SECONDS = 300
+WINDOW_SECONDS = 120
 
 def bucketize_fixed(col_name, edges, prefix):
     expr = None
@@ -101,7 +101,12 @@ seqs = (
     .withColumn("tokens_full", F.expr("transform(tok_sorted, x -> x.tok)"))
     .drop("tok_structs", "tok_sorted")
 )
-seqs = seqs.withColumn("tokens", F.expr(f"slice(tokens_full, 1, {MAX_LEN})")).drop("tokens_full")
+# keep the most recent events (tail), capped to MAX_LEN_BUILD
+seqs = seqs.withColumn(
+    "tokens",
+    F.expr(f"slice(tokens_full, greatest(size(tokens_full) - {MAX_LEN_BUILD} + 1, 1), {MAX_LEN_BUILD})")
+).drop("tokens_full")
+
 
 seqs = seqs.withColumn("seq_len", F.size("tokens"))
 seqs = seqs.filter(F.col("seq_len") >= F.lit(MIN_LEN))

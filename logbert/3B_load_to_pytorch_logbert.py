@@ -17,7 +17,12 @@ META_DIR = os.path.join(ROOT, "sequences_meta")
 
 VOCAB_PATH = os.path.join(ROOT, "vocab_token_to_id.json")
 
-MAX_LEN = 256
+meta_tmp = pd.read_parquet(META_DIR, columns=["seq_len", "split"]).drop_duplicates()
+train_lens = meta_tmp[meta_tmp["split"] == "train"]["seq_len"].values
+PCTL = 90
+MAX_LEN = int(np.percentile(train_lens, PCTL))
+print(f"[INFO] Dynamic MAX_LEN={MAX_LEN} (train P{PCTL})")
+
 
 PAD_TOKEN = "[PAD]"
 UNK_TOKEN = "[UNK]"
@@ -38,7 +43,9 @@ def load_json(path: str):
 
 
 def encode_tokens(tokens: List[str], token_to_id: Dict[str, int], max_len: int) -> Tuple[np.ndarray, np.ndarray]:
-    ids = [token_to_id.get(t, token_to_id[UNK_TOKEN]) for t in tokens[:max_len]]
+    tokens = tokens[-max_len:]  # tail
+    ids = [token_to_id.get(t, token_to_id[UNK_TOKEN]) for t in tokens]
+
     attn = [1] * len(ids)
 
     if len(ids) < max_len:
@@ -50,22 +57,17 @@ def encode_tokens(tokens: List[str], token_to_id: Dict[str, int], max_len: int) 
     return np.asarray(ids, dtype=np.int64), np.asarray(attn, dtype=np.int64)
 
 
-def build_vocab_from_train_benign(meta_df: pd.DataFrame, min_freq: int = 2) -> Dict[str, int]:
-    train_benign_meta = meta_df[(meta_df["split"] == "train") & (meta_df["seq_y"] == 0)]
-    days = sorted(train_benign_meta["day"].unique().tolist())
+def build_vocab_from_train_all(meta_df: pd.DataFrame, min_freq: int = 2) -> Dict[str, int]:
+    train_meta = meta_df[meta_df["split"] == "train"]
+    days = sorted(train_meta["day"].unique().tolist())
 
     counter = Counter()
-
     for day in days:
-        df_day = load_partition("train", day, benign_only=True)
+        df_day = load_partition("train", day, benign_only=False)
         for toks in df_day["tokens"].tolist():
             counter.update(toks)
 
-    token_to_id = {
-        PAD_TOKEN: 0,
-        UNK_TOKEN: 1,
-        MASK_TOKEN: 2,
-    }
+    token_to_id = {PAD_TOKEN: 0, UNK_TOKEN: 1, MASK_TOKEN: 2}
 
     for tok, freq in counter.most_common():
         if freq < min_freq:
@@ -76,11 +78,12 @@ def build_vocab_from_train_benign(meta_df: pd.DataFrame, min_freq: int = 2) -> D
     return token_to_id
 
 
+
 def load_or_create_vocab(meta_df: pd.DataFrame, min_freq: int = 2) -> Dict[str, int]:
     if os.path.exists(VOCAB_PATH):
         return load_json(VOCAB_PATH)
 
-    token_to_id = build_vocab_from_train_benign(meta_df, min_freq=min_freq)
+    token_to_id = build_vocab_from_train_all(meta_df, min_freq=min_freq)
     save_json(VOCAB_PATH, token_to_id)
     return token_to_id
 

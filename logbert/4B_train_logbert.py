@@ -43,9 +43,12 @@ class Config:
     lr: float = 2e-4
     weight_decay: float = 0.01
     epochs: int = 10
+    early_stop_patience: int = 4
+    early_stop_min_delta: float = 1e-4
+
     grad_clip: float = 1.0
 
-    score_passes: int = 5
+    score_passes: int = 15
     threshold_percentile: float = 99.0
 
     seed: int = 42
@@ -91,7 +94,12 @@ def load_json(path: str):
 
 
 def encode_tokens(tokens: List[str], token_to_id: Dict[str, int], max_len: int) -> Tuple[np.ndarray, np.ndarray]:
-    ids = [token_to_id.get(t, token_to_id[UNK_TOKEN]) for t in tokens[:max_len]]
+    if len(tokens) > max_len:
+        tokens = tokens[-max_len:]
+    else:
+        tokens = tokens
+
+    ids = [token_to_id.get(t, token_to_id[UNK_TOKEN]) for t in tokens]
     attn = [1] * len(ids)
 
     if len(ids) < max_len:
@@ -101,6 +109,7 @@ def encode_tokens(tokens: List[str], token_to_id: Dict[str, int], max_len: int) 
         attn.extend([0] * pad_n)
 
     return np.asarray(ids, dtype=np.int64), np.asarray(attn, dtype=np.int64)
+
 
 
 @lru_cache(maxsize=4)
@@ -116,17 +125,18 @@ def load_partition(split: str, day: str, benign_only: bool) -> pd.DataFrame:
     return pdf.set_index("seq_id", drop=False)
 
 
-def build_vocab_from_train_benign(meta_df: pd.DataFrame, min_freq: int) -> Dict[str, int]:
-    train_benign = meta_df[(meta_df["split"] == "train") & (meta_df["seq_y"] == 0)]
-    days = sorted(train_benign["day"].unique().tolist())
+def build_vocab_from_train_all(meta_df: pd.DataFrame, min_freq: int = 2) -> Dict[str, int]:
+    train_meta = meta_df[meta_df["split"] == "train"]
+    days = sorted(train_meta["day"].unique().tolist())
 
     counter = Counter()
     for day in days:
-        df_day = load_partition("train", day, benign_only=True)
+        df_day = load_partition("train", day, benign_only=False)
         for toks in df_day["tokens"].tolist():
             counter.update(toks)
 
     token_to_id = {PAD_TOKEN: 0, UNK_TOKEN: 1, MASK_TOKEN: 2}
+
     for tok, freq in counter.most_common():
         if freq < min_freq:
             break
@@ -136,13 +146,14 @@ def build_vocab_from_train_benign(meta_df: pd.DataFrame, min_freq: int) -> Dict[
     return token_to_id
 
 
+
 def load_or_create_vocab(meta_df: pd.DataFrame, min_freq: int) -> Dict[str, int]:
     if os.path.exists(VOCAB_PATH):
         token_to_id = load_json(VOCAB_PATH)
         token_to_id = {k: int(v) for k, v in token_to_id.items()}
         return token_to_id
 
-    token_to_id = build_vocab_from_train_benign(meta_df, min_freq=min_freq)
+    token_to_id = build_vocab_from_train_all(meta_df, min_freq=min_freq)
     save_json(VOCAB_PATH, token_to_id)
     return token_to_id
 
@@ -361,7 +372,7 @@ def score_sequences(model, loader, pad_id, mask_id, vocab_size, K: int) -> pd.Da
                     "day": days[i],
                     "entity": entities[i],
                     "seq_y": int(seq_y[i]),
-                    "score": float(-seq_loss_avg[i]),
+                    "score": float(seq_loss_avg[i]),
                 }
             )
 
@@ -394,6 +405,13 @@ def main():
     print("CUDA available:", torch.cuda.is_available())
 
     meta_df = pd.read_parquet(META_DIR, columns=["seq_id", "day", "split", "seq_y"]).drop_duplicates()
+    meta_len = pd.read_parquet(META_DIR, columns=["seq_len", "split"]).drop_duplicates()
+    train_lens = meta_len[meta_len["split"] == "train"]["seq_len"].values
+
+    PCTL = 90
+    CFG.max_len = int(np.percentile(train_lens, PCTL))
+    print(f"[INFO] Dynamic CFG.max_len set to {CFG.max_len} (train P{PCTL})")
+
     token_to_id = load_or_create_vocab(meta_df, min_freq=CFG.min_freq)
 
     vocab_size = len(token_to_id)
@@ -431,14 +449,20 @@ def main():
     best_val = float("inf")
     best_path = os.path.join(CKPT_DIR, "logbert_best.pt")
 
+    bad_epochs = 0
+    patience = CFG.early_stop_patience
+    min_delta = CFG.early_stop_min_delta
+
     for epoch in range(1, CFG.epochs + 1):
         train_loss = train_one_epoch(model, train_loader, optimizer, loss_fn, pad_id, mask_id, vocab_size)
         val_loss = eval_mlm_loss(model, val_loader, loss_fn, pad_id, mask_id, vocab_size)
 
         print(f"Epoch {epoch}/{CFG.epochs} | train_loss={train_loss:.4f} | val_loss={val_loss:.4f}")
 
-        if val_loss < best_val:
+        if val_loss < (best_val - min_delta):
             best_val = val_loss
+            bad_epochs = 0
+
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
@@ -448,6 +472,13 @@ def main():
                 best_path,
             )
             print("Saved best model:", best_path)
+        else:
+            bad_epochs += 1
+            print(f"[EARLYSTOP] no improvement: {bad_epochs}/{patience} (best_val={best_val:.4f})")
+
+            if bad_epochs >= patience:
+                print(f"[EARLYSTOP] stopping early at epoch {epoch}. Best val_loss={best_val:.4f}")
+                break
 
     ckpt = torch.load(best_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
@@ -483,8 +514,14 @@ def main():
     metrics = {
         "best_val_loss": float(best_val),
         "vocab_size": int(vocab_size),
+        "vocab_min_freq": int(CFG.min_freq),
+        "vocab_train_scope": "train_all",
+        "max_len": int(CFG.max_len),
+
         "mask_prob": float(CFG.mask_prob),
         "score_passes": int(CFG.score_passes),
+        "score_aggregation": "mean",
+
         "main_threshold_percentile": float(CFG.threshold_percentile),
         "main_metrics": metrics_main,
         "threshold_sweep": threshold_sweep,
