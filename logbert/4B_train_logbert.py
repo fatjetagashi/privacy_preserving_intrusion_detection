@@ -2,16 +2,20 @@ import os
 import json
 import random
 from dataclasses import dataclass
-from functools import lru_cache
-from collections import Counter
 from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
-import pyarrow.dataset as ds
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from _3B_load_to_pytorch_logbert import (
+    PAD_TOKEN, UNK_TOKEN, MASK_TOKEN,
+    save_json, load_json,
+    encode_tokens, load_partition,
+    build_vocab_from_train_all, load_or_create_vocab,
+    CICSequenceDataset,
+)
 
 from sklearn.metrics import (
     roc_auc_score,
@@ -26,7 +30,7 @@ from sklearn.metrics import (
 @dataclass
 class Config:
     root: str = os.path.join("..", "data", "traffic_labelled", "2B_preprocessed_logbert")
-    max_len: int = 256
+    max_len: int = None
     min_freq: int = 2
 
     batch_train: int = 64
@@ -58,13 +62,9 @@ CFG = Config()
 
 SEQS_DIR = os.path.join(CFG.root, "sequences")
 META_DIR = os.path.join(CFG.root, "sequences_meta")
-VOCAB_PATH = os.path.join(CFG.root, "vocab_token_to_id.json")
 CKPT_DIR = os.path.join(CFG.root, "checkpoints")
 os.makedirs(CKPT_DIR, exist_ok=True)
 
-PAD_TOKEN = "[PAD]"
-UNK_TOKEN = "[UNK]"
-MASK_TOKEN = "[MASK]"
 IGNORE_INDEX = -100
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -80,125 +80,14 @@ def set_seed(seed: int) -> None:
 
 set_seed(CFG.seed)
 
-seqs_ds = ds.dataset(SEQS_DIR, format="parquet", partitioning="hive")
-
-
-def save_json(path: str, obj) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, indent=2, ensure_ascii=False)
-
-
-def load_json(path: str):
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def encode_tokens(tokens: List[str], token_to_id: Dict[str, int], max_len: int) -> Tuple[np.ndarray, np.ndarray]:
-    if len(tokens) > max_len:
-        tokens = tokens[-max_len:]
-    else:
-        tokens = tokens
-
-    ids = [token_to_id.get(t, token_to_id[UNK_TOKEN]) for t in tokens]
-    attn = [1] * len(ids)
-
-    if len(ids) < max_len:
-        pad_id = token_to_id[PAD_TOKEN]
-        pad_n = max_len - len(ids)
-        ids.extend([pad_id] * pad_n)
-        attn.extend([0] * pad_n)
-
-    return np.asarray(ids, dtype=np.int64), np.asarray(attn, dtype=np.int64)
-
-
-
-@lru_cache(maxsize=4)
-def load_partition(split: str, day: str, benign_only: bool) -> pd.DataFrame:
-    filt = (ds.field("split") == split) & (ds.field("day") == day)
-    if benign_only:
-        filt = filt & (ds.field("seq_y") == 0)
-
-    cols = ["seq_id", "day", "entity", "split", "seq_y", "seq_len", "tokens"]
-    pdf = seqs_ds.to_table(filter=filt, columns=cols).to_pandas()
-    if len(pdf) == 0:
-        return pdf
-    return pdf.set_index("seq_id", drop=False)
-
-
-def build_vocab_from_train_all(meta_df: pd.DataFrame, min_freq: int = 2) -> Dict[str, int]:
-    train_meta = meta_df[meta_df["split"] == "train"]
-    days = sorted(train_meta["day"].unique().tolist())
-
-    counter = Counter()
-    for day in days:
-        df_day = load_partition("train", day, benign_only=False)
-        for toks in df_day["tokens"].tolist():
-            counter.update(toks)
-
-    token_to_id = {PAD_TOKEN: 0, UNK_TOKEN: 1, MASK_TOKEN: 2}
-
-    for tok, freq in counter.most_common():
-        if freq < min_freq:
-            break
-        if tok not in token_to_id:
-            token_to_id[tok] = len(token_to_id)
-
-    return token_to_id
-
-
-
-def load_or_create_vocab(meta_df: pd.DataFrame, min_freq: int) -> Dict[str, int]:
-    if os.path.exists(VOCAB_PATH):
-        token_to_id = load_json(VOCAB_PATH)
-        token_to_id = {k: int(v) for k, v in token_to_id.items()}
-        return token_to_id
-
-    token_to_id = build_vocab_from_train_all(meta_df, min_freq=min_freq)
-    save_json(VOCAB_PATH, token_to_id)
-    return token_to_id
-
-
-class CICSequenceDataset(Dataset):
-    def __init__(self, split: str, meta_df: pd.DataFrame, token_to_id: Dict[str, int], benign_only: bool):
-        self.split = split
-        self.token_to_id = token_to_id
-        self.benign_only = benign_only
-
-        meta = meta_df[meta_df["split"] == split]
-        if benign_only:
-            meta = meta[meta["seq_y"] == 0]
-        self.meta = meta.reset_index(drop=True)
-
-    def __len__(self) -> int:
-        return len(self.meta)
-
-    def __getitem__(self, idx: int):
-        row = self.meta.iloc[idx]
-        seq_id = row["seq_id"]
-        day = row["day"]
-
-        part = load_partition(self.split, day, self.benign_only)
-        s = part.loc[seq_id]
-
-        input_ids_np, attn_np = encode_tokens(s["tokens"], self.token_to_id, CFG.max_len)
-
-        return {
-            "input_ids": torch.tensor(input_ids_np, dtype=torch.long),
-            "attention_mask": torch.tensor(attn_np, dtype=torch.long),
-            "seq_y": torch.tensor(int(s["seq_y"]), dtype=torch.long),
-            "seq_id": s["seq_id"],
-            "day": s["day"],
-            "entity": s["entity"],
-        }
-
 
 def mlm_mask_batch(
-    input_ids: torch.Tensor,
-    attention_mask: torch.Tensor,
-    pad_id: int,
-    mask_id: int,
-    vocab_size: int,
-    mask_prob: float,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        pad_id: int,
+        mask_id: int,
+        vocab_size: int,
+        mask_prob: float,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     masked = input_ids.clone()
     labels = torch.full_like(input_ids, IGNORE_INDEX)
@@ -226,14 +115,14 @@ def mlm_mask_batch(
 
 class LogBERTModel(nn.Module):
     def __init__(
-        self,
-        vocab_size: int,
-        max_len: int,
-        d_model: int,
-        n_heads: int,
-        n_layers: int,
-        dropout: float,
-        ff_mult: int,
+            self,
+            vocab_size: int,
+            max_len: int,
+            d_model: int,
+            n_heads: int,
+            n_layers: int,
+            dropout: float,
+            ff_mult: int,
     ):
         super().__init__()
         self.tok_emb = nn.Embedding(vocab_size, d_model)
@@ -418,9 +307,9 @@ def main():
     pad_id = token_to_id[PAD_TOKEN]
     mask_id = token_to_id[MASK_TOKEN]
 
-    train_ds = CICSequenceDataset("train", meta_df, token_to_id, benign_only=True)
-    val_ds = CICSequenceDataset("val", meta_df, token_to_id, benign_only=True)
-    test_ds = CICSequenceDataset("test", meta_df, token_to_id, benign_only=False)
+    train_ds = CICSequenceDataset("train", meta_df, token_to_id, max_len=CFG.max_len, benign_only=True)
+    val_ds = CICSequenceDataset("val", meta_df, token_to_id, max_len=CFG.max_len, benign_only=True)
+    test_ds = CICSequenceDataset("test", meta_df, token_to_id, max_len=CFG.max_len, benign_only=False)
 
     train_loader = DataLoader(train_ds, batch_size=CFG.batch_train, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_ds, batch_size=CFG.batch_eval, shuffle=False, num_workers=0)

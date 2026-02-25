@@ -10,7 +10,6 @@ import pyarrow.dataset as ds
 import torch
 from torch.utils.data import Dataset, DataLoader
 
-
 ROOT = os.path.join("..", "data", "traffic_labelled", "2B_preprocessed_logbert")
 SEQS_DIR = os.path.join(ROOT, "sequences")
 META_DIR = os.path.join(ROOT, "sequences_meta")
@@ -23,11 +22,9 @@ PCTL = 90
 MAX_LEN = int(np.percentile(train_lens, PCTL))
 print(f"[INFO] Dynamic MAX_LEN={MAX_LEN} (train P{PCTL})")
 
-
 PAD_TOKEN = "[PAD]"
 UNK_TOKEN = "[UNK]"
 MASK_TOKEN = "[MASK]"
-
 
 seqs_ds = ds.dataset(SEQS_DIR, format="parquet", partitioning="hive")
 
@@ -78,7 +75,6 @@ def build_vocab_from_train_all(meta_df: pd.DataFrame, min_freq: int = 2) -> Dict
     return token_to_id
 
 
-
 def load_or_create_vocab(meta_df: pd.DataFrame, min_freq: int = 2) -> Dict[str, int]:
     if os.path.exists(VOCAB_PATH):
         return load_json(VOCAB_PATH)
@@ -104,10 +100,12 @@ def load_partition(split: str, day: str, benign_only: bool) -> pd.DataFrame:
 
 
 class CICSequenceDataset(Dataset):
-    def __init__(self, split: str, meta_df: pd.DataFrame, token_to_id: Dict[str, int], benign_only: bool = False):
+    def __init__(self, split: str, meta_df: pd.DataFrame, token_to_id: Dict[str, int], max_len: int,
+                 benign_only: bool = False):
         self.split = split
         self.token_to_id = token_to_id
         self.benign_only = benign_only
+        self.max_len = int(max_len)
 
         meta = meta_df[meta_df["split"] == split]
         if benign_only:
@@ -126,7 +124,7 @@ class CICSequenceDataset(Dataset):
         s = part.loc[seq_id]
 
         tokens = s["tokens"]
-        input_ids_np, attn_np = encode_tokens(tokens, self.token_to_id, MAX_LEN)
+        input_ids_np, attn_np = encode_tokens(tokens, self.token_to_id, self.max_len)
 
         return {
             "input_ids": torch.tensor(input_ids_np, dtype=torch.long),
@@ -138,45 +136,49 @@ class CICSequenceDataset(Dataset):
         }
 
 
-meta_df = pd.read_parquet(META_DIR, columns=["seq_id", "day", "split", "seq_y"]).drop_duplicates()
-token_to_id = load_or_create_vocab(meta_df, min_freq=2)
+def main():
+    meta_df = pd.read_parquet(META_DIR, columns=["seq_id", "day", "split", "seq_y"]).drop_duplicates()
+    token_to_id = load_or_create_vocab(meta_df, min_freq=2)
 
-train_ds = CICSequenceDataset("train", meta_df, token_to_id, benign_only=True)
-val_ds = CICSequenceDataset("val", meta_df, token_to_id, benign_only=True)
-test_ds = CICSequenceDataset("test", meta_df, token_to_id, benign_only=False)
+    train_ds = CICSequenceDataset("train", meta_df, token_to_id, max_len=MAX_LEN, benign_only=True)
+    val_ds = CICSequenceDataset("val", meta_df, token_to_id, max_len=MAX_LEN, benign_only=True)
+    test_ds = CICSequenceDataset("test", meta_df, token_to_id, max_len=MAX_LEN, benign_only=False)
 
-train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=0)
-val_loader = DataLoader(val_ds, batch_size=64, shuffle=False, num_workers=0)
-test_loader = DataLoader(test_ds, batch_size=64, shuffle=False, num_workers=0)
+    train_loader = DataLoader(train_ds, batch_size=32, shuffle=True, num_workers=0)
+    val_loader = DataLoader(val_ds, batch_size=64, shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_ds, batch_size=64, shuffle=False, num_workers=0)
 
-batch = next(iter(train_loader))
-print("input_ids:", batch["input_ids"].shape)
-print("attention_mask:", batch["attention_mask"].shape)
-print("seq_y:", batch["seq_y"].shape)
-print("vocab_size:", len(token_to_id))
+    batch = next(iter(train_loader))
+    print("input_ids:", batch["input_ids"].shape)
+    print("attention_mask:", batch["attention_mask"].shape)
+    print("seq_y:", batch["seq_y"].shape)
+    print("vocab_size:", len(token_to_id))
 
-unk_id = token_to_id["[UNK]"]
-unk_pct = (batch["input_ids"] == unk_id).float().mean().item() * 100
-pad_id = token_to_id["[PAD]"]
-pad_pct = (batch["input_ids"] == pad_id).float().mean().item() * 100
-print("UNK %:", round(unk_pct, 4))
-print("PAD %:", round(pad_pct, 4))
+    unk_id = token_to_id["[UNK]"]
+    unk_pct = (batch["input_ids"] == unk_id).float().mean().item() * 100
+    pad_id = token_to_id["[PAD]"]
+    pad_pct = (batch["input_ids"] == pad_id).float().mean().item() * 100
+    print("UNK %:", round(unk_pct, 4))
+    print("PAD %:", round(pad_pct, 4))
 
-mask_mismatch = ((batch["attention_mask"] == 0) & (batch["input_ids"] != pad_id)).any().item()
-print("mask mismatch:", mask_mismatch)
+    mask_mismatch = ((batch["attention_mask"] == 0) & (batch["input_ids"] != pad_id)).any().item()
+    print("mask mismatch:", mask_mismatch)
 
-id_to_token = [""] * len(token_to_id)
-for tok, idx in token_to_id.items():
-    id_to_token[idx] = tok
+    id_to_token = [""] * len(token_to_id)
+    for tok, idx in token_to_id.items():
+        id_to_token[idx] = tok
 
-sample_ids = batch["input_ids"][0].tolist()
-decoded = [id_to_token[i] for i in sample_ids[:30]]
-print("decoded first 30:", decoded)
+    sample_ids = batch["input_ids"][0].tolist()
+    decoded = [id_to_token[i] for i in sample_ids[:30]]
+    print("decoded first 30:", decoded)
 
-print("train samples:", len(train_ds))
-print("val samples:", len(val_ds))
-print("test samples:", len(test_ds))
+    print("train samples:", len(train_ds))
+    print("val samples:", len(val_ds))
+    print("test samples:", len(test_ds))
 
-test_meta = pd.read_parquet(META_DIR, columns=["seq_len"])
-meta_test = meta_df[meta_df["split"] == "test"]
-print("test attack %:", round((meta_test["seq_y"] == 1).mean() * 100, 2))
+    meta_test = meta_df[meta_df["split"] == "test"]
+    print("test attack %:", round((meta_test["seq_y"] == 1).mean() * 100, 2))
+
+
+if __name__ == "__main__":
+    main()
