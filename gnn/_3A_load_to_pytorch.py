@@ -93,12 +93,17 @@ train_ds = CICWindowGraphDataset("train")
 val_ds   = CICWindowGraphDataset("val")
 test_ds  = CICWindowGraphDataset("test")
 
-def build_loaders(batch_size=1):
+def build_loaders(batch_size=1, seed=None):
     train_ds = CICWindowGraphDataset("train")
     val_ds   = CICWindowGraphDataset("val")
     test_ds  = CICWindowGraphDataset("test")
 
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    g = None
+    if seed is not None:
+        g = torch.Generator()
+        g.manual_seed(seed)
+
+    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, generator=g)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False)
     test_loader  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False)
 
