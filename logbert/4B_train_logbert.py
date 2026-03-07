@@ -389,7 +389,7 @@ def main():
 
     metrics_main = compute_metrics(y_true, y_score, thr_main)
 
-    thr_candidates = [70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 97.5, 99.0]
+    thr_candidates = [70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 97.5, 99.0, 99.5]
 
     threshold_sweep = []
     for p in thr_candidates:
