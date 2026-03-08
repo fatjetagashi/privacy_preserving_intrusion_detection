@@ -142,5 +142,4 @@ out_meta = os.path.join(output_dir_path, "sequences_meta")
     .write.mode("overwrite")
     .parquet(out_meta)
 )
-
 spark.stop()
