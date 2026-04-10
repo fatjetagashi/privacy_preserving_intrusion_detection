@@ -1,0 +1,231 @@
+\documentclass[conference]{IEEEtran}
+
+% Replace the author block before submission.
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{url}
+
+\begin{document}
+
+\title{Toward Privacy-Preserving Intrusion Detection with Metadata-Only Flow Graph Learning on CIC-IDS2017}
+
+\author{
+\IEEEauthorblockN{Author Name(s)}
+\IEEEauthorblockA{
+Department / Lab / University \\
+City, Country \\
+email@domain.com
+}
+}
+
+\maketitle
+
+\begin{abstract}
+This paper presents an end-to-end intrusion detection pipeline that operates on network-flow metadata rather than packet payloads, making it a practical step toward privacy-preserving network security analytics. Starting from the labeled CIC-IDS2017 traffic files, the repository implements Spark-based merging and cleaning, constructs leakage-free five-minute flow graphs, and evaluates node-level binary intrusion detection with graph neural networks. Each flow is treated as a node, while graph structure supplies relational context through shared source-IP, destination-IP, and service chains. The checked-in artifacts contain 496 graphs, 2,827,876 labeled flow nodes, and 76 numeric flow features. Across the strongest saved configuration, a GraphSAGE model using source, destination, and service edges with chain depth $k=10$ reaches a mean ROC-AUC of 0.99978 $\pm$ 0.00006, PR-AUC of 0.99911 $\pm$ 0.00027, F1 of 0.99226 $\pm$ 0.00242, and false-positive rate of 0.00284 $\pm$ 0.00112 over five runs. In contrast, the only checked-in MLP baseline run reaches F1 0.59901 and PR-AUC 0.84526 under the same split regime. The repository also contains LogBERT- and Neural-ODE-inspired branches, but these are not accompanied by saved experimental outputs and are therefore treated here as future extensions rather than benchmarked baselines.
+\end{abstract}
+
+\begin{IEEEkeywords}
+intrusion detection, graph neural networks, network flows, privacy-aware security analytics, CIC-IDS2017, GraphSAGE
+\end{IEEEkeywords}
+
+\section{Introduction}
+Network intrusion detection systems increasingly face two competing requirements: they must remain accurate under diverse attacks while minimizing exposure of sensitive user data. Deep packet inspection can improve detection coverage, but it also increases privacy risk because payloads may contain personal or confidential information. A promising alternative is to operate on derived flow metadata such as packet counts, inter-arrival statistics, ports, timestamps, and communication structure. Such data is still security-relevant, yet substantially less invasive than payload content.
+
+This paper synthesizes the full repository workflow behind a metadata-only intrusion detection study. The codebase merges and cleans CIC-IDS2017 traffic files, converts them into graph-structured five-minute windows, and performs per-flow binary intrusion detection. The central idea is simple: each flow remains the prediction unit, but neighboring flows that share endpoint or service context may improve discrimination between benign and malicious activity. To test that hypothesis, the repository implements a GraphSAGE-based classifier \cite{hamilton2017graphsage} and compares it against a node-only MLP baseline under the same splits and feature set. It also contains exploratory sequence-model branches inspired by BERT-style masked modeling \cite{devlin2019bert} and neural ordinary differential equations \cite{chen2018neuralode}.
+
+The repository title frames the problem as privacy-preserving intrusion detection. Based on the checked-in code, the privacy argument is operational rather than cryptographic: the system relies on flow-level metadata and graph context, not packet payload inspection. This is a meaningful design choice, but it does not constitute a formal privacy guarantee. Accordingly, this paper uses the term ``toward privacy-preserving'' to stay aligned with what is actually implemented.
+
+The main contributions evidenced by the repository are as follows:
+\begin{itemize}
+\item An end-to-end Spark preprocessing pipeline for CIC-IDS2017 labeled traffic, including deterministic cleaning and graph construction.
+\item A leakage-free split construction strategy that balances graphs, node counts, and positive nodes more effectively than the repository's legacy random split.
+\item A graph-learning study showing that metadata-only flow graphs substantially outperform an edge-agnostic baseline.
+\item An ablation over edge families and chain depth, showing that richer relational context improves detection quality.
+\end{itemize}
+
+\section{Related Work}
+CIC-IDS2017 remains a widely used benchmark for evaluating intrusion detection methods because it combines labeled benign and attack traffic with modern flow-level features \cite{sharafaldin2018cicids}. The repository operates directly on its generated flow records and preserves day-level metadata for split construction and analysis.
+
+On the modeling side, the main checked-in architecture is GraphSAGE \cite{hamilton2017graphsage}, an inductive graph neural network that learns node representations by aggregating neighborhood information. This is a good fit for network traffic because new graphs and nodes appear continuously over time. Rather than learning a transductive embedding for a fixed graph, GraphSAGE can reuse the same aggregator on previously unseen flow windows.
+
+The repository also includes two exploratory alternatives. The first is a BERT-style masked language modeling branch for tokenized traffic sequences, following the general transformer pretraining paradigm introduced by Devlin et al. \cite{devlin2019bert}. The second is a continuous-time sequence model based on neural ODE principles \cite{chen2018neuralode}. These branches broaden the design space, but the repository does not currently include their generated datasets or saved evaluation reports, so they are discussed only as implemented extensions.
+
+\section{Problem Formulation}
+Let a five-minute traffic window define a graph $G_t = (V_t, E_t)$, where each node $v_i \in V_t$ represents one labeled flow record. Each node carries a 76-dimensional numeric feature vector $x_i$ derived from the cleaned CIC-IDS2017 flow statistics, and a binary node label $y_i \in \{0,1\}$ indicating benign or attack traffic. The learning task is node-level binary classification:
+\begin{equation}
+\hat{y}_i = f_{\theta}(x_i, G_t).
+\end{equation}
+
+Importantly, the graph itself is auxiliary context, not the prediction target. The preprocessing code also derives a graph-level helper label $graph\_y$ indicating whether any attack node exists inside a window, but that label is used only to construct balanced train/validation/test splits. It is not the supervised prediction objective.
+
+This formulation is privacy-aware in the sense that it never consumes packet payload content. Instead, it learns from flow-level behavioral statistics plus communication topology induced by shared source identifiers, destination identifiers, and service definitions.
+
+\section{Dataset and Preprocessing}
+\subsection{Raw Data Preparation}
+The repository contains parallel merge-and-clean pipelines for tabular machine-learning data and traffic-labeled flow data. The traffic branch is the one used by the graph experiments. It merges the CIC-IDS2017 CSV files, normalizes timestamps, annotates each row with day and time-of-day metadata, removes empty rows and unlabeled rows, replaces infinite values with nulls, drops rows containing invalid numeric values, and removes the duplicate \texttt{Fwd Header Length.1} column when it matches the original feature.
+
+After cleaning, the graph pipeline constructs five-minute windows using Unix time bucketing. Each window becomes one graph, and each flow within the window becomes one node ordered by timestamp and flow identifier.
+
+\subsection{Graph Construction}
+The repository defines three edge families:
+\begin{itemize}
+\item \textbf{src\_only}: connect flows sharing the same source IP inside a graph.
+\item \textbf{src+dst}: add destination-IP chains.
+\item \textbf{src+dst+svc}: further add service chains defined by destination port and protocol.
+\end{itemize}
+
+Within each family, nodes are first chronologically ordered inside a grouping key, then each node is connected to the next $k$ nodes in that ordered chain. The code evaluates $k \in \{1, 5, 10\}$ for the richest edge family and $k=5$ for reduced edge sets. Reverse edges are added explicitly, yielding undirected message passing through symmetric directed edges.
+
+\subsection{Split Construction}
+The checked-in preprocessing emphasizes split integrity. The repository compares a legacy random percentile split against a newer deterministic strategy that balances, per day, (i) total graphs, (ii) graph attack labels, (iii) total nodes, and (iv) positive nodes. Validation of the saved default dataset reports zero leaking graph IDs across splits and substantial reduction in node-balance distortion relative to the legacy strategy.
+
+Table \ref{tab:splitstats} summarizes the saved default graph dataset. Table \ref{tab:balance} compares the two split strategies using the repository's own absolute ratio-error scores.
+
+\begin{table}[t]
+\caption{Saved default graph dataset statistics (\texttt{src+dst+svc}, $k=5$).}
+\label{tab:splitstats}
+\centering
+\begin{tabular}{|l|r|r|r|r|}
+\hline
+\textbf{Split} & \textbf{Graphs} & \textbf{Nodes} & \textbf{Attack Nodes} & \textbf{Pos. Rate} \\
+\hline
+Train & 351 & 1,960,763 & 363,341 & 0.1853 \\
+Val & 72 & 428,613 & 110,527 & 0.2579 \\
+Test & 73 & 438,500 & 82,688 & 0.1886 \\
+\hline
+All & 496 & 2,827,876 & 556,556 & 0.1968 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\caption{Repository split-balance validation on the default graph dataset. Lower is better.}
+\label{tab:balance}
+\centering
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Metric} & \textbf{Legacy Random} & \textbf{Deterministic Balanced} \\
+\hline
+Graph-count error & 0.0145 & 0.0153 \\
+Node-count error & 0.0967 & 0.0133 \\
+Positive-node error & 0.3708 & 0.0972 \\
+Leaking graph IDs & \multicolumn{2}{c|}{0 in saved deterministic split} \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Models}
+\subsection{GraphSAGE Intrusion Detector}
+The main model is a two-layer GraphSAGE classifier with hidden size 128 and dropout 0.3. After two \texttt{SAGEConv} layers, a small MLP head maps node embeddings to a binary logit. Inputs are standardized using feature-wise mean and standard deviation estimated from the training split only.
+
+Training uses \texttt{BCEWithLogitsLoss} with a positive-class weight computed from the training labels. Optimization uses Adam, weight decay, gradient clipping, and learning-rate reduction on validation PR-AUC plateau. Early stopping is also driven by validation PR-AUC.
+
+\subsection{MLP Baseline}
+The baseline preserves the same node features, normalization, loss, and split regime, but removes all graph edges. Architecturally, it is a two-hidden-layer MLP with ReLU activations and dropout. This makes the baseline a clean test of whether graph context, rather than feature engineering alone, explains the observed gains.
+
+\subsection{Exploratory Sequence Branches}
+Two additional branches are implemented in the repository but are not part of the quantitative benchmark because their preprocessed datasets and saved reports are absent.
+
+\textbf{LogBERT branch:} flows are tokenized into discrete symbols derived from protocol, destination port, duration bin, packet-count bins, byte-count bins, packet-rate bins, and compact flag signatures. Sequences are formed over short windows and scored with masked language modeling loss on benign training data.
+
+\textbf{Neural ODE branch:} short traffic sequences are represented as time-stamped feature vectors, then modeled by a GRU-ODE-style classifier that alternates ODE evolution with recurrent updates.
+
+Both branches are useful future work directions, but the present paper does not claim benchmark results for them.
+
+\section{Experimental Setup}
+The saved graph experiments evaluate the following variants:
+\begin{itemize}
+\item \textbf{MLP baseline}: no graph edges.
+\item \textbf{GNN src\_only, $k=5$}
+\item \textbf{GNN src+dst, $k=5$}
+\item \textbf{GNN src+dst+svc, $k=1$}
+\item \textbf{GNN src+dst+svc, $k=5$}
+\item \textbf{GNN src+dst+svc, $k=10$}
+\end{itemize}
+
+The repository records threshold-free metrics (ROC-AUC and PR-AUC) plus thresholded metrics including F1, precision, recall, balanced accuracy, specificity, and false-positive rate. It evaluates both the default threshold of 0.5 and a validation-tuned threshold. Because the tuned threshold consistently underperforms 0.5 on the saved GNN test runs, the primary comparison in this paper uses the threshold-0.5 metrics.
+
+The number of saved runs differs by variant. The strongest GNN variants contain five runs, the default $k=5$ variant contains six saved runs because one earlier seed-0 artifact remains in the repository alongside a newer five-seed suite, the reduced \texttt{src+dst} variant contains two runs, and the MLP baseline contains one run. All tables therefore report the available run count explicitly.
+
+\section{Results}
+\subsection{Main Quantitative Findings}
+Table \ref{tab:results} reports the threshold-0.5 results from the regenerated repository aggregate. Three findings stand out.
+
+First, graph context matters greatly. The only checked-in MLP baseline run achieves ROC-AUC 0.93925, PR-AUC 0.84526, and F1 0.59901. Every GNN variant exceeds 0.97 mean F1, and the best model reaches 0.99226 mean F1. This indicates that relationships among flows carry critical information that the raw per-flow feature vector alone does not capture.
+
+Second, richer connectivity helps. Moving from \texttt{src\_only} to \texttt{src+dst} and then to \texttt{src+dst+svc} improves or preserves all threshold-free metrics while generally reducing false positives and increasing recall.
+
+Third, longer local relational chains help most in the full edge family. The best saved configuration is \texttt{src+dst+svc} with $k=10$, which reaches mean recall 0.99664 and mean false-positive rate 0.00284 over five runs.
+
+\begin{table*}[t]
+\caption{Repository aggregate results at threshold 0.5. Means and standard deviations are taken directly from the saved run artifacts; the MLP baseline has only one checked-in run.}
+\label{tab:results}
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{|l|l|r|r|c|c|c|c|c|}
+\hline
+\textbf{Model} & \textbf{Variant} & \textbf{$k$} & \textbf{Runs} & \textbf{ROC-AUC} & \textbf{PR-AUC} & \textbf{F1} & \textbf{Precision} & \textbf{Recall} \\
+\hline
+MLP & node-only baseline & -- & 1 & 0.93925 & 0.84526 & 0.59901 & 0.99559 & 0.42837 \\
+GNN & src\_only & 5 & 5 & 0.99942 $\pm$ 0.00034 & 0.99757 $\pm$ 0.00148 & 0.97023 $\pm$ 0.02084 & 0.96608 $\pm$ 0.01090 & 0.97591 $\pm$ 0.04936 \\
+GNN & src+dst & 5 & 2 & 0.99959 $\pm$ 0.00001 & 0.99828 $\pm$ 0.00005 & 0.98199 $\pm$ 0.00062 & 0.96629 $\pm$ 0.00125 & 0.99821 $\pm$ 0.00005 \\
+GNN & src+dst+svc & 1 & 5 & 0.99947 $\pm$ 0.00017 & 0.99797 $\pm$ 0.00070 & 0.98124 $\pm$ 0.00304 & 0.96950 $\pm$ 0.00561 & 0.99329 $\pm$ 0.00384 \\
+GNN & src+dst+svc & 5 & 6 & 0.99845 $\pm$ 0.00340 & 0.99636 $\pm$ 0.00741 & 0.98279 $\pm$ 0.02366 & 0.98729 $\pm$ 0.00374 & 0.97910 $\pm$ 0.04349 \\
+GNN & src+dst+svc & 10 & 5 & \textbf{0.99978 $\pm$ 0.00006} & \textbf{0.99911 $\pm$ 0.00027} & \textbf{0.99226 $\pm$ 0.00242} & \textbf{0.98793 $\pm$ 0.00471} & \textbf{0.99664 $\pm$ 0.00164} \\
+\hline
+\end{tabular}
+}
+\end{table*}
+
+\subsection{Threshold Selection Behavior}
+An interesting repository-level finding is that validation threshold tuning does not improve test-set F1 for the saved GNN models. For example, the strongest \texttt{src+dst+svc, $k=10$} model drops from mean F1 0.99226 at threshold 0.5 to 0.96976 under tuned thresholds. The same pattern appears across the other GNN variants. This likely reflects two factors already visible in the saved artifacts: (i) the model outputs are highly separable, making 0.5 a robust operating point, and (ii) the validation split has a higher positive-node rate (0.2579) than the test split (0.1886), which can bias threshold tuning toward overly aggressive positive predictions.
+
+\section{Discussion}
+The results support the repository's central design intuition: even when one avoids packet payloads, intrusion detection can remain highly accurate if relational flow context is modeled explicitly. Flow metadata alone is not enough in the checked-in baseline; the node-only MLP is precise but misses a large fraction of attacks. Once graph structure is introduced, recall rises sharply while precision remains high.
+
+The edge-family ablation is also informative. Source-only chains already perform well, which suggests that short-term source behavior is itself predictive. Adding destination and service context further improves results, consistent with the idea that attack campaigns often manifest as structured communication patterns rather than isolated anomalous flows.
+
+From a privacy perspective, the repository demonstrates a practical middle ground. It avoids payload inspection and works on derived flow statistics plus endpoint/service relationships. However, the code still uses IP addresses, ports, protocols, and timestamps during graph construction, so the approach should be described as privacy-aware or privacy-reducing rather than formally privacy-preserving. If stronger guarantees are needed, future work could combine this pipeline with IP anonymization, secure aggregation, differential privacy, or federated learning.
+
+\section{Threats to Validity}
+Several limitations follow directly from the repository state.
+
+First, the quantitative evidence is strongest for the GNN family. The MLP baseline has only one saved run, and the \texttt{src+dst} variant has only two. That is sufficient for a strong directional conclusion, but not for a perfectly uniform statistical comparison.
+
+Second, the default \texttt{src+dst+svc, $k=5$} configuration contains six saved runs because an older seed-0 experiment remains alongside a newer five-seed suite. Reporting the available run count is transparent, but a cleaned benchmark archive would improve comparability.
+
+Third, the study is currently limited to CIC-IDS2017. Although that dataset is widely used, cross-dataset generalization is not demonstrated here.
+
+Fourth, the LogBERT and Neural ODE branches are implemented but not benchmarked in the checked-in artifacts. They should therefore be treated as engineering extensions, not as validated competitors.
+
+Finally, because graph construction depends on flow-level endpoint and service metadata, the privacy benefits are incomplete and should not be overstated.
+
+\section{Conclusion}
+This repository supports a strong IEEE-style case for metadata-only graph learning as a practical direction for intrusion detection. The implemented pipeline produces leakage-free five-minute flow graphs from CIC-IDS2017, maintains 76 flow features per node, and shows that graph neural networks substantially outperform a node-only baseline under the saved experiments. The best checked-in configuration, based on source, destination, and service chains with $k=10$, achieves 0.99978 mean ROC-AUC, 0.99911 mean PR-AUC, and 0.99226 mean F1 over five runs. Beyond the headline result, the repository also contributes a more balanced split strategy and a clear ablation showing that richer flow relationships improve detection quality. Future work should complete the LogBERT and Neural ODE branches, expand multi-seed non-graph baselines, and strengthen the privacy story with explicit protection mechanisms rather than metadata minimization alone.
+
+\begin{thebibliography}{00}
+
+\bibitem{sharafaldin2018cicids}
+I. Sharafaldin, A. H. Lashkari, and A. A. Ghorbani,
+``Toward Generating a New Intrusion Detection Dataset and Intrusion Traffic Characterization,''
+in \emph{Proc. 4th Int. Conf. Information Systems Security and Privacy (ICISSP)}, 2018, pp. 108--116.
+
+\bibitem{hamilton2017graphsage}
+W. Hamilton, Z. Ying, and J. Leskovec,
+``Inductive Representation Learning on Large Graphs,''
+in \emph{Advances in Neural Information Processing Systems}, vol. 30, 2017.
+
+\bibitem{devlin2019bert}
+J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova,
+``BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding,''
+in \emph{Proc. NAACL-HLT}, 2019, pp. 4171--4186.
+
+\bibitem{chen2018neuralode}
+R. T. Q. Chen, Y. Rubanova, J. Bettencourt, and D. Duvenaud,
+``Neural Ordinary Differential Equations,''
+in \emph{Advances in Neural Information Processing Systems}, vol. 31, 2018.
+
+\end{thebibliography}
+
+\end{document}

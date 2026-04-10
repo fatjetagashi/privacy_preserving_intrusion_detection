@@ -1,0 +1,28 @@
+{
+  "best_epoch": 13,
+  "best_val_pr_auc": 0.9995550400953288,
+  "best_val_row": {
+    "epoch": 13,
+    "lr": 0.001,
+    "train_loss": 0.15926869272517863,
+    "val_loss": 0.053401133542879946,
+    "val_roc_auc": 0.9998094886906697,
+    "val_pr_auc": 0.9995550400953288,
+    "val_f1_at_0_5": 0.9848264765693088,
+    "val_precision_at_0_5": 0.9731226483421365,
+    "val_recall_at_0_5": 0.9968152578103088,
+    "val_tuned_threshold": 0.75,
+    "val_tuned_f1": 0.9960278458423729,
+    "val_tuned_precision": 0.9972338109922002,
+    "val_tuned_recall": 0.9948247939417518
+  },
+  "best_val_threshold": 0.75,
+  "best_val_f1_tuned": 0.9960278458423729,
+  "best_val_precision_tuned": 0.9972338109922002,
+  "best_val_recall_tuned": 0.9948247939417518,
+  "val_loss_at_best_checkpoint": 0.053401133628396706,
+  "test_loss_at_best_checkpoint": 0.04234962289728509,
+  "pos_weight": 4.396481513977051,
+  "device": "cuda",
+  "feature_count": 76
+}

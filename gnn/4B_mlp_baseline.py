@@ -7,7 +7,7 @@ import torch
 
 from _3A_load_to_pytorch import build_loaders
 from _training_common import (
-    GraphSAGEBinary,
+    NodeMLPBinary,
     build_epoch_row,
     collect_predictions,
     compute_mean_std,
@@ -26,7 +26,7 @@ from _training_common import (
 THIS_DIR = Path(__file__).resolve().parent
 RUNS_DIR = THIS_DIR / "runs"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-TASK_DEFINITION = "Per-flow binary intrusion detection with 5-minute context graphs."
+TASK_DEFINITION = "Per-flow binary intrusion detection baseline without graph edges."
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,7 +67,7 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
     x_mean, x_std = compute_mean_std(train_loader, num_features=num_features)
     pos_weight = compute_pos_weight(train_loader).to(DEVICE)
 
-    model = GraphSAGEBinary(
+    model = NodeMLPBinary(
         in_dim=num_features,
         hidden=args.hidden,
         dropout=args.dropout,
@@ -83,7 +83,7 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
     )
     criterion = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-    run_dir = make_run_dir(RUNS_DIR, model_name="gnn", variant_id=variant_id, seed=seed)
+    run_dir = make_run_dir(RUNS_DIR, model_name="mlp", variant_id=variant_id, seed=seed)
 
     history = []
     best_state = None
@@ -123,7 +123,6 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
             val_loss=val_loss,
         )
         history.append(epoch_row)
-
         scheduler.step(epoch_row["val_pr_auc"])
 
         print(
@@ -179,11 +178,11 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
     )
 
     run_config = {
-        "model_name": "gnn",
+        "model_name": "mlp",
         "task_definition": TASK_DEFINITION,
         "task_framing": (
-            "Each flow is a node. Each 5-minute window is a disjoint graph that provides "
-            "relational context. graph_y is used only for split construction and balancing."
+            "Each flow is still evaluated as a node label. The MLP ignores graph edges while "
+            "keeping the same 5-minute graph-based split structure for a clean baseline."
         ),
         "prediction_target": "node_y",
         "graph_helper_label_usage": "split_only",
