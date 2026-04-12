@@ -208,6 +208,3 @@ __marimo__/
 
 .idea/
 .venv/
-
-data/traffic_labelled/*
-data/machine_learning/*

@@ -1,0 +1,4 @@
+# Track large dataset payloads with Git LFS so clones pull lightweight pointers
+# by default.
+data/**/*.csv filter=lfs diff=lfs merge=lfs -text
+data/**/*.parquet filter=lfs diff=lfs merge=lfs -text
