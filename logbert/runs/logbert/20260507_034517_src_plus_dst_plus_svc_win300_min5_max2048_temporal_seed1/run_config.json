@@ -1,0 +1,219 @@
+{
+  "model_name": "logbert",
+  "task_definition": "LogBERT-style sequence anomaly detection over time-ordered traffic-flow tokens. Training uses benign sequences only, with masked language modeling and optional hypersphere regularization on the [CLS] representation.",
+  "task_framing": "Train on benign sequences only. Use masked language modeling and optional hypersphere regularization. Detect anomalies via masked-token prediction failures and CLS-distance.",
+  "prediction_target": "seq_y",
+  "seed": 1,
+  "data_root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert_variants\\src_plus_dst_plus_svc_win300_min5_max2048_temporal",
+  "batch_train": 64,
+  "batch_eval": 128,
+  "d_model": 256,
+  "n_heads": 8,
+  "n_layers": 4,
+  "dropout": 0.1,
+  "ff_mult": 4,
+  "lr": 0.0002,
+  "weight_decay": 0.01,
+  "max_epochs": 20,
+  "grad_clip": 1.0,
+  "early_stop_patience": 5,
+  "early_stop_min_delta": 0.0001,
+  "scheduler_patience": 2,
+  "scheduler_factor": 0.5,
+  "scheduler_min_lr": 1e-05,
+  "mask_prob_train": 0.15,
+  "mask_prob_score": 0.5,
+  "score_passes": 10,
+  "epoch_score_passes": 2,
+  "num_candidates": 9,
+  "vhm_weight": 0.1,
+  "center_warmup_epochs": 1,
+  "min_freq": 2,
+  "max_len": 149,
+  "max_len_percentile": 95.0,
+  "max_len_cap": 512,
+  "benign_percentile": 99.0,
+  "vocab_train_scope": "train_benign_only",
+  "vocab_size": 1916,
+  "sequence_build_config": {
+    "dataset_source": "Traffic Labelled / GeneratedLabelledFlows",
+    "output_root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert_variants\\src_plus_dst_plus_svc_win300_min5_max2048_temporal",
+    "variant_id": "src_plus_dst_plus_svc_win300_min5_max2048_temporal",
+    "window_seconds": 300,
+    "entity_mode": "src_plus_dst_plus_svc",
+    "entity_columns": [
+      "Source IP",
+      "Destination IP",
+      "Destination Port",
+      "Protocol"
+    ],
+    "split_grouping": "day_plus_entity",
+    "split_strategy": "global_temporal_group_holdout_v1",
+    "split_assignment": "temporal",
+    "legacy_split_strategy": "legacy_random_percent_rank_by_day_entity_y",
+    "split_seed": 42,
+    "split_ratios": {
+      "train": 0.7,
+      "val": 0.15,
+      "test": 0.15
+    },
+    "token_schema": {
+      "base_tokens": [
+        "Protocol",
+        "Destination Port"
+      ],
+      "bucketized_tokens": [
+        "Flow Duration",
+        "Total Fwd Packets",
+        "Total Backward Packets",
+        "BYTES_TOTAL",
+        "Flow Packets/s"
+      ],
+      "flag_signature_columns": [
+        "FIN Flag Count",
+        "SYN Flag Count",
+        "RST Flag Count",
+        "PSH Flag Count",
+        "ACK Flag Count",
+        "URG Flag Count"
+      ]
+    },
+    "min_len": 5,
+    "max_len_build": 2048,
+    "capping_policy": "tail"
+  },
+  "split_summary": [
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "test",
+      "day": "ALL",
+      "n_groups": 3568,
+      "n_attack_groups": 571,
+      "n_benign_groups": 2997,
+      "n_sequences": 6054,
+      "n_attack_sequences": 2289,
+      "n_tokens": 130227,
+      "positive_sequence_rate": 0.3780971258671952
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "train",
+      "day": "ALL",
+      "n_groups": 16646,
+      "n_attack_groups": 5,
+      "n_benign_groups": 16641,
+      "n_sequences": 32357,
+      "n_attack_sequences": 64,
+      "n_tokens": 1147955,
+      "positive_sequence_rate": 0.0019779336774113
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "val",
+      "day": "ALL",
+      "n_groups": 3567,
+      "n_attack_groups": 432,
+      "n_benign_groups": 3135,
+      "n_sequences": 7849,
+      "n_attack_sequences": 1812,
+      "n_tokens": 310311,
+      "positive_sequence_rate": 0.2308574340680341
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "test",
+      "day": "Friday",
+      "n_groups": 3568,
+      "n_attack_groups": 571,
+      "n_benign_groups": 2997,
+      "n_sequences": 6054,
+      "n_attack_sequences": 2289,
+      "n_tokens": 130227,
+      "positive_sequence_rate": 0.3780971258671952
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "val",
+      "day": "Friday",
+      "n_groups": 1530,
+      "n_attack_groups": 432,
+      "n_benign_groups": 1098,
+      "n_sequences": 5419,
+      "n_attack_sequences": 1812,
+      "n_tokens": 287740,
+      "positive_sequence_rate": 0.3343790367226426
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "train",
+      "day": "Monday",
+      "n_groups": 5268,
+      "n_attack_groups": 0,
+      "n_benign_groups": 5268,
+      "n_sequences": 10372,
+      "n_attack_sequences": 0,
+      "n_tokens": 327764,
+      "positive_sequence_rate": 0.0
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "train",
+      "day": "Thursday",
+      "n_groups": 2283,
+      "n_attack_groups": 2,
+      "n_benign_groups": 2281,
+      "n_sequences": 5356,
+      "n_attack_sequences": 17,
+      "n_tokens": 231192,
+      "positive_sequence_rate": 0.0031740104555638
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "val",
+      "day": "Thursday",
+      "n_groups": 2037,
+      "n_attack_groups": 0,
+      "n_benign_groups": 2037,
+      "n_sequences": 2430,
+      "n_attack_sequences": 0,
+      "n_tokens": 22571,
+      "positive_sequence_rate": 0.0
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "train",
+      "day": "Tuesday",
+      "n_groups": 4567,
+      "n_attack_groups": 2,
+      "n_benign_groups": 4565,
+      "n_sequences": 8421,
+      "n_attack_sequences": 28,
+      "n_tokens": 284606,
+      "positive_sequence_rate": 0.0033250207813798
+    },
+    {
+      "summary_label": "global_temporal_group_holdout_v1",
+      "split": "train",
+      "day": "Wednesday",
+      "n_groups": 4528,
+      "n_attack_groups": 1,
+      "n_benign_groups": 4527,
+      "n_sequences": 8208,
+      "n_attack_sequences": 19,
+      "n_tokens": 304393,
+      "positive_sequence_rate": 0.0023148148148148
+    }
+  ],
+  "special_tokens": [
+    "[PAD]",
+    "[UNK]",
+    "[MASK]",
+    "[CLS]"
+  ],
+  "use_distance_rule": true,
+  "evaluation_protocol": {
+    "threshold_free_score": "composite_score",
+    "unsupervised_threshold_source": "train_benign_percentile",
+    "validation_tuned_threshold_source": "validation_split_labels"
+  }
+}

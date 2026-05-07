@@ -1,0 +1,127 @@
+{
+  "data_root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert",
+  "variant_id": "src_plus_dst_plus_svc_win300_min5_max2048",
+  "sequence_build_config": {
+    "dataset_source": "Traffic Labelled / GeneratedLabelledFlows",
+    "output_root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert",
+    "variant_id": "src_plus_dst_plus_svc_win300_min5_max2048",
+    "window_seconds": 300,
+    "entity_mode": "src_plus_dst_plus_svc",
+    "entity_columns": [
+      "Source IP",
+      "Destination IP",
+      "Destination Port",
+      "Protocol"
+    ],
+    "split_grouping": "day_plus_entity",
+    "split_strategy": "deterministic_day_entity_balanced_v1",
+    "split_assignment": "balanced",
+    "legacy_split_strategy": "legacy_random_percent_rank_by_day_entity_y",
+    "split_seed": 42,
+    "split_ratios": {
+      "train": 0.7,
+      "val": 0.15,
+      "test": 0.15
+    },
+    "token_schema": {
+      "base_tokens": [
+        "Protocol",
+        "Destination Port"
+      ],
+      "bucketized_tokens": [
+        "Flow Duration",
+        "Total Fwd Packets",
+        "Total Backward Packets",
+        "BYTES_TOTAL",
+        "Flow Packets/s"
+      ],
+      "flag_signature_columns": [
+        "FIN Flag Count",
+        "SYN Flag Count",
+        "RST Flag Count",
+        "PSH Flag Count",
+        "ACK Flag Count",
+        "URG Flag Count"
+      ]
+    },
+    "min_len": 5,
+    "max_len_build": 2048,
+    "capping_policy": "tail"
+  },
+  "counts": {
+    "n_train_total": 30673,
+    "n_train_benign": 27731,
+    "n_train_attack": 2942,
+    "n_val_total": 7620,
+    "n_val_benign": 6996,
+    "n_val_attack": 624,
+    "n_test_total": 7967,
+    "n_test_benign": 7368,
+    "n_test_attack": 599
+  },
+  "class_coverage": {
+    "val_has_both_classes": true,
+    "test_has_both_classes": true
+  },
+  "vocab": {
+    "vocab_size": 1841,
+    "max_len": 75,
+    "vocab_train_scope": "train_benign_only"
+  },
+  "batch_shapes": {
+    "input_ids": [
+      16,
+      75
+    ],
+    "attention_mask": [
+      16,
+      75
+    ],
+    "masked_ids": [
+      16,
+      75
+    ],
+    "mlm_logits": [
+      16,
+      75,
+      1841
+    ],
+    "cls_output": [
+      16,
+      256
+    ]
+  },
+  "forward_check": {
+    "masked_token_count": 35,
+    "loss": 58.33198165893555,
+    "loss_is_finite": true,
+    "logits_finite": true,
+    "cls_finite": true
+  },
+  "sampled_token_stats": {
+    "train": {
+      "sampled_batches": 4,
+      "sampled_tokens": 4800,
+      "sampled_nonpad_tokens": 814,
+      "sampled_unk_tokens": 1,
+      "unk_rate_over_all_positions": 0.00020833333333333335,
+      "unk_rate_over_nonpad_positions": 0.0012285012285012285
+    },
+    "val": {
+      "sampled_batches": 4,
+      "sampled_tokens": 4800,
+      "sampled_nonpad_tokens": 1154,
+      "sampled_unk_tokens": 43,
+      "unk_rate_over_all_positions": 0.008958333333333334,
+      "unk_rate_over_nonpad_positions": 0.03726169844020797
+    },
+    "test": {
+      "sampled_batches": 4,
+      "sampled_tokens": 4800,
+      "sampled_nonpad_tokens": 1375,
+      "sampled_unk_tokens": 2,
+      "unk_rate_over_all_positions": 0.0004166666666666667,
+      "unk_rate_over_nonpad_positions": 0.0014545454545454545
+    }
+  }
+}

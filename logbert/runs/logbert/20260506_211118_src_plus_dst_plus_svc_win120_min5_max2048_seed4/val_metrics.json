@@ -1,0 +1,108 @@
+{
+  "threshold_free": {
+    "roc_auc": 0.9954272739172694,
+    "pr_auc": 0.9456352832176701
+  },
+  "at_threshold_train_benign_percentile": {
+    "threshold_type": "train_benign_percentile_rule",
+    "sequence_threshold": 1.0,
+    "distance_threshold": 1.6589462137222277,
+    "use_distance_rule": true,
+    "tp": 317,
+    "fp": 73,
+    "tn": 7448,
+    "fn": 457,
+    "accuracy": 0.9361060880048222,
+    "balanced_accuracy": 0.6999272837089741,
+    "specificity": 0.9902938439037361,
+    "fpr": 0.009706156096263794,
+    "fnr": 0.5904392764857873,
+    "mcc": 0.5494486304825211,
+    "f1": 0.5446735395189003,
+    "precision": 0.8128205128205128,
+    "recall": 0.4095607235142119,
+    "support_pos": 774,
+    "support_neg": 7521
+  },
+  "at_threshold_val_tuned": {
+    "threshold_type": "validation_tuned_rule",
+    "sequence_threshold": 0.99,
+    "distance_threshold": 1.6589462137222277,
+    "use_distance_rule": true,
+    "tp": 774,
+    "fp": 278,
+    "tn": 7243,
+    "fn": 0,
+    "accuracy": 0.9664858348402652,
+    "balanced_accuracy": 0.9815184151043744,
+    "specificity": 0.9630368302087488,
+    "fpr": 0.03696316979125116,
+    "fnr": 0.0,
+    "mcc": 0.8417518095720636,
+    "f1": 0.8477546549835706,
+    "precision": 0.7357414448669202,
+    "recall": 1.0,
+    "support_pos": 774,
+    "support_neg": 7521
+  },
+  "score_statistics": {
+    "mlm_ratio_threshold": 1.0,
+    "distance_threshold": 1.6589462137222277,
+    "distance_mean": 0.8226220861352082,
+    "distance_std": 0.24786364655068163,
+    "composite_threshold": 3.712241083729435
+  },
+  "score_summary": {
+    "n_sequences": 8295,
+    "n_attack": 774,
+    "n_benign": 7521,
+    "mlm_error_ratio": {
+      "mean": 0.3872475749892174,
+      "std": 0.35227558231069245,
+      "p50": 0.3150000274181366,
+      "p90": 1.0,
+      "p95": 1.0,
+      "p99": 1.0,
+      "benign_mean": 0.3241880912824835,
+      "benign_p95": 0.9166666865348816,
+      "attack_mean": 1.0,
+      "attack_p95": 1.0
+    },
+    "mlm_loss": {
+      "mean": 3.668593765189843,
+      "std": 3.1673157234721083,
+      "p50": 2.8130080699920654,
+      "p90": 7.267421722412109,
+      "p95": 9.525971126556392,
+      "p99": 15.662499923706015,
+      "benign_mean": 3.890264629343892,
+      "benign_p95": 9.858325004577637,
+      "attack_mean": 1.5146059495534083,
+      "attack_p95": 1.9777980506420128
+    },
+    "distance": {
+      "mean": 0.9651659936593052,
+      "std": 0.45353264434598634,
+      "p50": 0.8051289319992065,
+      "p90": 1.5016822814941406,
+      "p95": 1.6372226476669312,
+      "p99": 2.8508682250976562,
+      "benign_mean": 0.8599722432441937,
+      "benign_p95": 1.4119207859039307,
+      "attack_mean": 1.9873393746309502,
+      "attack_p95": 2.858759641647339
+    },
+    "composite_score": {
+      "mean": 1.2613815751295514,
+      "std": 1.78856504194358,
+      "p50": 0.6516667008399963,
+      "p90": 3.573300357243278,
+      "p95": 4.286486634356678,
+      "p99": 9.182910915690593,
+      "benign_mean": 0.8046955707872921,
+      "benign_p95": 2.533941503053466,
+      "attack_mean": 5.699024260734371,
+      "attack_p95": 9.214748648490467
+    }
+  }
+}

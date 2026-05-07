@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Dict
@@ -379,15 +380,74 @@ def save_dataframe_artifacts(df: pd.DataFrame, csv_path: Path, json_path: Path) 
     df.to_json(json_path, orient="records", indent=2)
 
 
+def can_reuse_existing_output(args: argparse.Namespace, output_dir_path: Path) -> bool:
+    config_path = output_dir_path / "sequence_build_config.json"
+    required_paths = [
+        output_dir_path / "sequences",
+        output_dir_path / "sequences_meta",
+        output_dir_path / "sequence_assignments.csv",
+        output_dir_path / "split_summary.csv",
+        output_dir_path / "split_comparison.csv",
+        output_dir_path / "preprocessing_stats.json",
+    ]
+    if not config_path.exists() or not all(path.exists() for path in required_paths):
+        return False
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as file_obj:
+            existing_config = json.load(file_obj)
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    expected_split_strategy = (
+        DEFAULT_SPLIT_STRATEGY if args.split_strategy == "balanced" else TEMPORAL_SPLIT_STRATEGY
+    )
+    expected_config = {
+        "output_root": str(output_dir_path),
+        "variant_id": sanitize_variant_id(
+            entity_mode=args.entity_mode,
+            window_seconds=args.window_seconds,
+            min_len=args.min_len,
+            max_len_build=args.max_len_build,
+            split_strategy=args.split_strategy,
+        ),
+        "window_seconds": args.window_seconds,
+        "entity_mode": args.entity_mode,
+        "entity_columns": ENTITY_MODE_COLUMNS[args.entity_mode],
+        "split_strategy": expected_split_strategy,
+        "split_assignment": args.split_strategy,
+        "split_seed": args.split_seed,
+        "min_len": args.min_len,
+        "max_len_build": args.max_len_build,
+        "capping_policy": "tail",
+    }
+
+    for key, expected_value in expected_config.items():
+        if existing_config.get(key) != expected_value:
+            return False
+
+    return True
+
+
 def main() -> None:
     args = parse_args()
     output_dir_path = resolve_output_root(args)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
+    if can_reuse_existing_output(args=args, output_dir_path=output_dir_path):
+        print(f"Reusing existing preprocessed LogBERT dataset at: {output_dir_path}")
+        return
+
+    os.environ["PYSPARK_PYTHON"] = sys.executable
+    os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+
     spark = (
         SparkSession.builder
         .appName("CIC_IDS_T_2017 LOGBERT SEQUENCE BUILDER")
-        .master("local[*]")
+        .master("local[4]")
+        .config("spark.driver.memory", "12g")
+        .config("spark.pyspark.python", sys.executable)
+        .config("spark.pyspark.driver.python", sys.executable)
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("ERROR")
@@ -534,8 +594,16 @@ def main() -> None:
         how="left",
     )
 
-    assignments_spark = spark.createDataFrame(
-        assignments_pdf[["day", "split_group_id", "split", "split_strategy", "split_seed"]]
+    assignment_csv_path = output_dir_path / "sequence_assignments.csv"
+    sequence_assignments.to_csv(assignment_csv_path, index=False)
+
+    assignments_spark = (
+        spark.read
+        .format("csv")
+        .option("header", True)
+        .option("inferSchema", True)
+        .load(str(assignment_csv_path))
+        .select("day", "split_group_id", "split", "split_strategy", "split_seed")
     )
 
     seqs = seqs.join(assignments_spark, on=["day", "split_group_id"], how="inner")

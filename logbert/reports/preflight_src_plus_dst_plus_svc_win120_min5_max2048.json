@@ -1,0 +1,127 @@
+{
+  "data_root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert_variants\\src_plus_dst_plus_svc_win120_min5_max2048",
+  "variant_id": "src_plus_dst_plus_svc_win120_min5_max2048",
+  "sequence_build_config": {
+    "dataset_source": "Traffic Labelled / GeneratedLabelledFlows",
+    "output_root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert_variants\\src_plus_dst_plus_svc_win120_min5_max2048",
+    "variant_id": "src_plus_dst_plus_svc_win120_min5_max2048",
+    "window_seconds": 120,
+    "entity_mode": "src_plus_dst_plus_svc",
+    "entity_columns": [
+      "Source IP",
+      "Destination IP",
+      "Destination Port",
+      "Protocol"
+    ],
+    "split_grouping": "day_plus_entity",
+    "split_strategy": "deterministic_day_entity_balanced_v1",
+    "split_assignment": "balanced",
+    "legacy_split_strategy": "legacy_random_percent_rank_by_day_entity_y",
+    "split_seed": 42,
+    "split_ratios": {
+      "train": 0.7,
+      "val": 0.15,
+      "test": 0.15
+    },
+    "token_schema": {
+      "base_tokens": [
+        "Protocol",
+        "Destination Port"
+      ],
+      "bucketized_tokens": [
+        "Flow Duration",
+        "Total Fwd Packets",
+        "Total Backward Packets",
+        "BYTES_TOTAL",
+        "Flow Packets/s"
+      ],
+      "flag_signature_columns": [
+        "FIN Flag Count",
+        "SYN Flag Count",
+        "RST Flag Count",
+        "PSH Flag Count",
+        "ACK Flag Count",
+        "URG Flag Count"
+      ]
+    },
+    "min_len": 5,
+    "max_len_build": 2048,
+    "capping_policy": "tail"
+  },
+  "counts": {
+    "n_train_total": 31873,
+    "n_train_benign": 28200,
+    "n_train_attack": 3673,
+    "n_val_total": 8295,
+    "n_val_benign": 7521,
+    "n_val_attack": 774,
+    "n_test_total": 9665,
+    "n_test_benign": 8891,
+    "n_test_attack": 774
+  },
+  "class_coverage": {
+    "val_has_both_classes": true,
+    "test_has_both_classes": true
+  },
+  "vocab": {
+    "vocab_size": 1599,
+    "max_len": 108,
+    "vocab_train_scope": "train_benign_only"
+  },
+  "batch_shapes": {
+    "input_ids": [
+      16,
+      108
+    ],
+    "attention_mask": [
+      16,
+      108
+    ],
+    "masked_ids": [
+      16,
+      108
+    ],
+    "mlm_logits": [
+      16,
+      108,
+      1599
+    ],
+    "cls_output": [
+      16,
+      256
+    ]
+  },
+  "forward_check": {
+    "masked_token_count": 28,
+    "loss": 55.851905822753906,
+    "loss_is_finite": true,
+    "logits_finite": true,
+    "cls_finite": true
+  },
+  "sampled_token_stats": {
+    "train": {
+      "sampled_batches": 4,
+      "sampled_tokens": 6912,
+      "sampled_nonpad_tokens": 1104,
+      "sampled_unk_tokens": 3,
+      "unk_rate_over_all_positions": 0.00043402777777777775,
+      "unk_rate_over_nonpad_positions": 0.002717391304347826
+    },
+    "val": {
+      "sampled_batches": 4,
+      "sampled_tokens": 6912,
+      "sampled_nonpad_tokens": 1352,
+      "sampled_unk_tokens": 5,
+      "unk_rate_over_all_positions": 0.0007233796296296296,
+      "unk_rate_over_nonpad_positions": 0.0036982248520710057
+    },
+    "test": {
+      "sampled_batches": 4,
+      "sampled_tokens": 6912,
+      "sampled_nonpad_tokens": 1173,
+      "sampled_unk_tokens": 2,
+      "unk_rate_over_all_positions": 0.00028935185185185184,
+      "unk_rate_over_nonpad_positions": 0.0017050298380221654
+    }
+  }
+}

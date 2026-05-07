@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -15,6 +16,7 @@ VALIDATE_SCRIPT = THIS_DIR / "5C_validate_outputs.py"
 PREFLIGHT_SCRIPT = THIS_DIR / "5D_preflight_check.py"
 TRAIN_SCRIPT = THIS_DIR / "4B_train_logbert.py"
 AGGREGATE_SCRIPT = THIS_DIR / "5A_aggregate_runs.py"
+RUNS_DIR = THIS_DIR / "runs" / "logbert"
 
 
 def resolve_python_executable(explicit_python: str | None) -> str:
@@ -97,6 +99,57 @@ def experiment_matrix():
     ]
 
 
+def is_complete_run(run_dir: Path, output_root: Path, vhm_weight: float, seed: int) -> bool:
+    required_files = [
+        "run_config.json",
+        "summary.json",
+        "val_metrics.json",
+        "test_metrics.json",
+        "best_model.pt",
+    ]
+    if any(not (run_dir / file_name).exists() for file_name in required_files):
+        return False
+
+    try:
+        config = json.loads((run_dir / "run_config.json").read_text(encoding="utf-8"))
+        summary = json.loads((run_dir / "summary.json").read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return False
+
+    try:
+        run_data_root = Path(config["data_root"]).resolve()
+    except (KeyError, TypeError):
+        return False
+
+    if run_data_root != output_root.resolve():
+        return False
+    if int(config.get("seed", -1)) != seed:
+        return False
+    if abs(float(config.get("vhm_weight", -999.0)) - float(vhm_weight)) > 1e-12:
+        return False
+    if int(summary.get("best_epoch", -1)) < 1:
+        return False
+
+    return True
+
+
+def missing_seeds_for_experiment(seeds: list[int], output_root: Path, vhm_weight: float) -> list[int]:
+    if not RUNS_DIR.exists():
+        return list(seeds)
+
+    completed = set()
+    for run_dir in RUNS_DIR.iterdir():
+        if not run_dir.is_dir():
+            continue
+        for seed in seeds:
+            if seed in completed:
+                continue
+            if is_complete_run(run_dir, output_root=output_root, vhm_weight=vhm_weight, seed=seed):
+                completed.add(seed)
+
+    return [seed for seed in seeds if seed not in completed]
+
+
 def command_strings(seeds: list[int], python_executable: str, selected_labels: set[str] | None = None) -> list[list[str]]:
     commands = []
     for experiment in experiment_matrix():
@@ -131,18 +184,31 @@ def command_strings(seeds: list[int], python_executable: str, selected_labels: s
         )
         commands.append([python_executable, str(VALIDATE_SCRIPT), "--data-root", str(output_root)])
         commands.append([python_executable, str(PREFLIGHT_SCRIPT), "--data-root", str(output_root)])
-        commands.append(
-            [
-                python_executable,
-                str(TRAIN_SCRIPT),
-                "--data-root",
-                str(output_root),
-                "--vhm-weight",
-                str(experiment["vhm_weight"]),
-                "--seeds",
-                *[str(seed) for seed in seeds],
-            ]
+
+        missing_seeds = missing_seeds_for_experiment(
+            seeds=seeds,
+            output_root=output_root,
+            vhm_weight=experiment["vhm_weight"],
         )
+        if missing_seeds:
+            for seed in missing_seeds:
+                commands.append(
+                    [
+                        python_executable,
+                        str(TRAIN_SCRIPT),
+                        "--data-root",
+                        str(output_root),
+                        "--vhm-weight",
+                        str(experiment["vhm_weight"]),
+                        "--seeds",
+                        str(seed),
+                    ]
+                )
+        else:
+            print(
+                f"[SKIP TRAIN] {experiment['label']} already has complete runs "
+                f"for seeds {', '.join(str(seed) for seed in seeds)}."
+            )
 
     commands.append([python_executable, str(AGGREGATE_SCRIPT)])
     return commands
@@ -183,7 +249,7 @@ def main() -> None:
     )
 
     for command in commands:
-        print(" ".join(command))
+        print(" ".join(command), flush=True)
 
     if not args.execute:
         return

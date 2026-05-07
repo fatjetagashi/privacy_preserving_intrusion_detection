@@ -1,0 +1,47 @@
+{
+  "dataset_source": "Traffic Labelled / GeneratedLabelledFlows",
+  "output_root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert",
+  "variant_id": "src_plus_dst_plus_svc_win300_min5_max2048",
+  "window_seconds": 300,
+  "entity_mode": "src_plus_dst_plus_svc",
+  "entity_columns": [
+    "Source IP",
+    "Destination IP",
+    "Destination Port",
+    "Protocol"
+  ],
+  "split_grouping": "day_plus_entity",
+  "split_strategy": "deterministic_day_entity_balanced_v1",
+  "split_assignment": "balanced",
+  "legacy_split_strategy": "legacy_random_percent_rank_by_day_entity_y",
+  "split_seed": 42,
+  "split_ratios": {
+    "train": 0.7,
+    "val": 0.15,
+    "test": 0.15
+  },
+  "token_schema": {
+    "base_tokens": [
+      "Protocol",
+      "Destination Port"
+    ],
+    "bucketized_tokens": [
+      "Flow Duration",
+      "Total Fwd Packets",
+      "Total Backward Packets",
+      "BYTES_TOTAL",
+      "Flow Packets/s"
+    ],
+    "flag_signature_columns": [
+      "FIN Flag Count",
+      "SYN Flag Count",
+      "RST Flag Count",
+      "PSH Flag Count",
+      "ACK Flag Count",
+      "URG Flag Count"
+    ]
+  },
+  "min_len": 5,
+  "max_len_build": 2048,
+  "capping_policy": "tail"
+}

@@ -75,6 +75,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask-prob-train", type=float, default=0.15)
     parser.add_argument("--mask-prob-score", type=float, default=0.50)
     parser.add_argument("--score-passes", type=int, default=10)
+    parser.add_argument(
+        "--epoch-score-passes",
+        type=int,
+        default=2,
+        help="Lighter scoring passes used only during epoch selection; final metrics still use --score-passes.",
+    )
     parser.add_argument("--num-candidates", type=int, default=9)
     parser.add_argument("--vhm-weight", type=float, default=0.10)
     parser.add_argument("--center-warmup-epochs", type=int, default=1)
@@ -703,7 +709,7 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
             vocab_size=vocab_size,
             mask_prob=args.mask_prob_score,
             num_candidates=args.num_candidates,
-            score_passes=args.score_passes,
+            score_passes=args.epoch_score_passes,
         )
         stats = compute_score_stats(train_benign_scores, benign_percentile=args.benign_percentile)
 
@@ -717,7 +723,7 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
             vocab_size=vocab_size,
             mask_prob=args.mask_prob_score,
             num_candidates=args.num_candidates,
-            score_passes=args.score_passes,
+            score_passes=args.epoch_score_passes,
         )
         val_scores_df = attach_composite_score(val_scores_df, stats)
 
@@ -741,7 +747,8 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
             f"train_vhm={train_losses['vhm']:.4f} "
             f"val_pr_auc={epoch_row['val_pr_auc']:.4f} "
             f"val_f1_unsup={epoch_row['val_f1_unsupervised']:.4f} "
-            f"val_f1_tuned={epoch_row['val_f1_tuned']:.4f}"
+            f"val_f1_tuned={epoch_row['val_f1_tuned']:.4f}",
+            flush=True,
         )
 
         improved = best_state is None or val_pr_auc_for_selection > (best_val_pr_auc + args.early_stop_min_delta)
@@ -757,7 +764,8 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
             if stale_epochs >= args.early_stop_patience:
                 print(
                     f"[EARLY STOP] seed={seed} epoch={epoch:02d} "
-                    f"best_epoch={best_epoch:02d} best_val_pr_auc={best_val_pr_auc:.6f}"
+                    f"best_epoch={best_epoch:02d} best_val_pr_auc={best_val_pr_auc:.6f}",
+                    flush=True,
                 )
                 break
 
@@ -896,6 +904,7 @@ def run_single_seed(args: argparse.Namespace, seed: int) -> Path:
         "mask_prob_train": args.mask_prob_train,
         "mask_prob_score": args.mask_prob_score,
         "score_passes": args.score_passes,
+        "epoch_score_passes": args.epoch_score_passes,
         "num_candidates": args.num_candidates,
         "vhm_weight": args.vhm_weight,
         "center_warmup_epochs": args.center_warmup_epochs,

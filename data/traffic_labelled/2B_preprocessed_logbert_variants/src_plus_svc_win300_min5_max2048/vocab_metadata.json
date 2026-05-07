@@ -1,0 +1,11 @@
+{
+  "min_freq": 2,
+  "train_scope": "train_benign_only",
+  "special_tokens": [
+    "[PAD]",
+    "[UNK]",
+    "[MASK]",
+    "[CLS]"
+  ],
+  "root": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\2B_preprocessed_logbert_variants\\src_plus_svc_win300_min5_max2048"
+}

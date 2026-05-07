@@ -1,0 +1,13 @@
+{
+  "input_path": "E:\\Documents\\uni\\master\\privacy_preserving_intrusion_detection\\data\\traffic_labelled\\1B_clean_cic_ids_t_2017\\1B_clean_cic_ids_t_2017.csv",
+  "rows_input": 2827876,
+  "rows_after_timestamp_filter": 2827876,
+  "rows_dropped_invalid_timestamp": 0,
+  "sequences_before_min_len_filter": 445995,
+  "sequences_after_min_len_filter": 28125,
+  "sequences_dropped_short": 417870,
+  "sequences_truncated_after_filter": 21,
+  "n_split_groups": 2625,
+  "n_attack_split_groups": 1008,
+  "n_benign_split_groups": 1617
+}
