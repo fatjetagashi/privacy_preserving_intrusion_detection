@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ROOT = REPO_ROOT / "data" / "traffic_labelled" / "2C_preprocessed_neuralode"
 
 EVENT_IGNORE_INDEX = -100
-DEFAULT_STATS_VERSION = 2
+DEFAULT_STATS_VERSION = 3
 
 
 def resolve_root(root: Optional[str] = None) -> Path:
@@ -83,6 +83,7 @@ def load_partition(root: str, split: str, day: str) -> pd.DataFrame:
         "seq_y",
         "seq_len",
         "full_seq_len",
+        "full_n_attack_events",
         "was_truncated",
         "n_events",
         "n_attack_events",
@@ -206,13 +207,17 @@ def compute_train_stats(
     dt_clip = max(dt_clip, 1.0)
 
     stats_path, meta_path = _stats_paths(resolve_root(root))
+    config = load_sequence_build_config(resolved_root)
     np.savez(stats_path, mean=mean, std=std, dt_clip=np.asarray([dt_clip], dtype=np.float32))
     save_json(
         meta_path,
         {
             "version": DEFAULT_STATS_VERSION,
             "root": str(resolve_root(root)),
-            "feature_columns": load_sequence_build_config(resolved_root).get("feature_columns", []),
+            "feature_columns": config.get("feature_columns", []),
+            "sequence_build_version": config.get("sequence_build_version"),
+            "event_counting_policy": config.get("event_counting_policy"),
+            "variant_id": config.get("variant_id"),
             "max_feature_rows": int(max_feature_rows),
             "max_dt_samples": int(max_dt_samples),
         },
@@ -228,10 +233,14 @@ def load_or_create_train_stats(
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     resolved_root = resolve_root(root)
     stats_path, meta_path = _stats_paths(resolved_root)
+    config = load_sequence_build_config(resolved_root)
     expected_meta = {
         "version": DEFAULT_STATS_VERSION,
         "root": str(resolved_root),
-        "feature_columns": load_sequence_build_config(resolved_root).get("feature_columns", []),
+        "feature_columns": config.get("feature_columns", []),
+        "sequence_build_version": config.get("sequence_build_version"),
+        "event_counting_policy": config.get("event_counting_policy"),
+        "variant_id": config.get("variant_id"),
         "max_feature_rows": int(max_feature_rows),
         "max_dt_samples": int(max_dt_samples),
     }

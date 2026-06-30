@@ -4,7 +4,9 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import pyarrow.dataset as ds
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +39,63 @@ def score_balance(summary_df: pd.DataFrame) -> dict[str, float]:
     return scores
 
 
+def validate_sequence_integrity(data_root: Path) -> dict[str, object]:
+    sequence_root = data_root / "sequences"
+    dataset = ds.dataset(sequence_root, format="parquet", partitioning="hive")
+    available_columns = set(dataset.schema.names)
+    required_columns = {
+        "seq_id",
+        "seq_y",
+        "seq_len",
+        "n_events",
+        "n_attack_events",
+        "y_seq",
+    }
+    missing_columns = sorted(required_columns - available_columns)
+    if missing_columns:
+        return {
+            "checked": False,
+            "missing_columns": missing_columns,
+            "passed": False,
+        }
+
+    optional_columns = ["full_seq_len", "full_n_attack_events"]
+    columns = sorted(required_columns | {col for col in optional_columns if col in available_columns})
+    sequences = dataset.to_table(columns=columns).to_pandas()
+
+    if sequences.empty:
+        return {
+            "checked": True,
+            "n_sequences_checked": 0,
+            "passed": False,
+            "issue": "No stored sequences found.",
+        }
+
+    y_sums = sequences["y_seq"].map(lambda values: int(np.asarray(values, dtype=np.int64).sum()))
+    y_max = sequences["y_seq"].map(lambda values: int(np.asarray(values, dtype=np.int64).max()) if len(values) else 0)
+
+    report = {
+        "checked": True,
+        "n_sequences_checked": int(len(sequences)),
+        "n_attack_events_gt_n_events": int((sequences["n_attack_events"] > sequences["n_events"]).sum()),
+        "n_events_ne_seq_len": int((sequences["n_events"] != sequences["seq_len"]).sum()),
+        "n_attack_events_ne_sum_y_seq": int((sequences["n_attack_events"] != y_sums).sum()),
+        "seq_y_ne_max_y_seq": int((sequences["seq_y"] != y_max).sum()),
+    }
+
+    if "full_seq_len" in sequences.columns:
+        report["full_seq_len_lt_seq_len"] = int((sequences["full_seq_len"] < sequences["seq_len"]).sum())
+    if "full_n_attack_events" in sequences.columns:
+        report["full_n_attack_events_lt_n_attack_events"] = int(
+            (sequences["full_n_attack_events"] < sequences["n_attack_events"]).sum()
+        )
+
+    issue_counts = [value for key, value in report.items() if key.startswith("n_") and key != "n_sequences_checked"]
+    issue_counts.extend(value for key, value in report.items() if key.endswith("_lt_seq_len") or key.endswith("_lt_n_attack_events"))
+    report["passed"] = all(int(count) == 0 for count in issue_counts)
+    return report
+
+
 def main() -> None:
     args = parse_args()
     data_root = Path(args.data_root).resolve()
@@ -59,8 +118,11 @@ def main() -> None:
     for strategy_label, strategy_df in split_comparison.groupby("summary_label", sort=True):
         strategy_scores[strategy_label] = score_balance(strategy_df)
 
+    sequence_integrity = validate_sequence_integrity(data_root)
+
     split_class_coverage = {}
     overall_rows = split_summary[split_summary["day"] == "ALL"].copy()
+    impossible_summary_rows = split_summary[split_summary["n_attack_events"] > split_summary["n_events"]]
     for split_name in sorted(overall_rows["split"].unique().tolist()):
         split_row = overall_rows[overall_rows["split"] == split_name].iloc[0]
         n_sequences = int(split_row["n_sequences"])
@@ -86,6 +148,11 @@ def main() -> None:
         "max_splits_per_group_id": max_split_count,
         "leaking_group_ids": leaking_groups,
         "split_balance_error": strategy_scores,
+        "sequence_integrity_checks": sequence_integrity,
+        "split_summary_integrity_checks": {
+            "n_attack_events_gt_n_events_rows": int(len(impossible_summary_rows)),
+            "passed": bool(impossible_summary_rows.empty),
+        },
         "split_class_coverage": split_class_coverage,
         "invalid_timestamp_drop_detected": bool(preprocessing_stats.get("rows_dropped_invalid_timestamp", 0) > 0),
         "preprocessing_stats": preprocessing_stats,

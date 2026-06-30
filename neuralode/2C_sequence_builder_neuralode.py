@@ -9,6 +9,7 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 from pyspark.sql import SparkSession, functions as F
+from pyspark.sql.window import Window
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,10 @@ DEFAULT_SPLIT_STRATEGY = "deterministic_day_entity_balanced_v1"
 TEMPORAL_SPLIT_STRATEGY = "global_temporal_group_holdout_v1"
 LEGACY_SPLIT_STRATEGY = "legacy_random_percent_rank_by_day_entity_y"
 DEFAULT_INVALID_TIMESTAMP_POLICY = "drop"
+DEFAULT_SPARK_MASTER = "local[4]"
+DEFAULT_SPARK_DRIVER_MEMORY = "12g"
+SEQUENCE_BUILD_VERSION = "neuralode_retained_events_v2"
+EVENT_COUNTING_POLICY = "retained_events_v2"
 SPLIT_RATIOS = {"train": 0.70, "val": 0.15, "test": 0.15}
 SPLIT_ORDER = ["train", "val", "test"]
 
@@ -96,12 +101,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--spark-master",
-        default="local[*]",
+        default=DEFAULT_SPARK_MASTER,
         help="Spark master string for preprocessing execution.",
     )
     parser.add_argument(
         "--spark-driver-memory",
-        default=None,
+        default=DEFAULT_SPARK_DRIVER_MEMORY,
         help="Optional Spark driver memory value such as 8g or 24g.",
     )
     return parser.parse_args()
@@ -405,6 +410,9 @@ def main() -> None:
         SparkSession.builder
         .appName("CIC_IDS_T_2017 NEURALODE SEQUENCE BUILDER")
         .master(args.spark_master)
+        .config("spark.pyspark.python", sys.executable)
+        .config("spark.pyspark.driver.python", sys.executable)
+        .config("spark.sql.shuffle.partitions", "64")
     )
     if args.spark_driver_memory:
         spark_builder = spark_builder.config("spark.driver.memory", args.spark_driver_memory)
@@ -489,12 +497,28 @@ def main() -> None:
 
     df = df.withColumn("x", F.array([F.col(col_name).cast("double") for col_name in feature_cols]))
 
-    seqs = (
+    full_sequence_stats = (
         df.groupBy("seq_id", "day", "window_id", "entity", "split_group_id")
         .agg(
-            F.max("y").alias("seq_y"),
-            F.count("*").alias("n_events"),
-            F.sum("y").alias("n_attack_events"),
+            F.count("*").alias("full_seq_len"),
+            F.sum("y").alias("full_n_attack_events"),
+        )
+        .withColumn("was_truncated", F.col("full_seq_len") > F.lit(args.max_len_build))
+    )
+
+    tail_window = Window.partitionBy("seq_id").orderBy(
+        F.col("ts_unix").desc(),
+        F.col("Flow ID").desc(),
+    )
+    capped_events = (
+        df.withColumn("_tail_rank", F.row_number().over(tail_window))
+        .filter(F.col("_tail_rank") <= F.lit(args.max_len_build))
+        .drop("_tail_rank")
+    )
+
+    sequence_payload = (
+        capped_events.groupBy("seq_id", "day", "window_id", "entity", "split_group_id")
+        .agg(
             F.min("Timestamp").alias("seq_start_ts"),
             F.max("Timestamp").alias("seq_end_ts"),
             F.collect_list(
@@ -508,32 +532,20 @@ def main() -> None:
         )
         .withColumn("events_sorted", F.sort_array(F.col("events"), asc=True))
         .drop("events")
-        .withColumn("t_full", F.expr("transform(events_sorted, e -> e.t)"))
-        .withColumn("x_full", F.expr("transform(events_sorted, e -> e.x)"))
-        .withColumn("y_full", F.expr("transform(events_sorted, e -> e.y)"))
+        .withColumn("t", F.expr("transform(events_sorted, e -> e.t)"))
+        .withColumn("x", F.expr("transform(events_sorted, e -> e.x)"))
+        .withColumn("y_seq", F.expr("transform(events_sorted, e -> e.y)"))
         .drop("events_sorted")
-        .withColumn("full_seq_len", F.size("t_full"))
-        .withColumn("was_truncated", F.col("full_seq_len") > F.lit(args.max_len_build))
-        .withColumn(
-            "t",
-            F.expr(
-                f"slice(t_full, greatest(size(t_full) - {args.max_len_build} + 1, 1), {args.max_len_build})"
-            ),
-        )
-        .withColumn(
-            "x",
-            F.expr(
-                f"slice(x_full, greatest(size(x_full) - {args.max_len_build} + 1, 1), {args.max_len_build})"
-            ),
-        )
-        .withColumn(
-            "y_seq",
-            F.expr(
-                f"slice(y_full, greatest(size(y_full) - {args.max_len_build} + 1, 1), {args.max_len_build})"
-            ),
-        )
-        .drop("t_full", "x_full", "y_full")
         .withColumn("seq_len", F.size("t"))
+        .withColumn("n_events", F.col("seq_len"))
+        .withColumn("n_attack_events", F.expr("aggregate(y_seq, 0, (acc, y) -> acc + y)"))
+        .withColumn("seq_y", F.when(F.col("n_attack_events") > F.lit(0), F.lit(1)).otherwise(F.lit(0)))
+    )
+
+    seqs = full_sequence_stats.join(
+        sequence_payload,
+        on=["seq_id", "day", "window_id", "entity", "split_group_id"],
+        how="inner",
     )
 
     sequences_before_min_filter = seqs.count()
@@ -541,6 +553,12 @@ def main() -> None:
     sequences_after_min_filter = seqs.count()
     sequences_dropped_short = sequences_before_min_filter - sequences_after_min_filter
     truncated_sequences = seqs.filter(F.col("was_truncated")).count()
+    truncated_attack_events_removed = (
+        seqs
+        .select((F.col("full_n_attack_events") - F.col("n_attack_events")).alias("n_removed_attack_events"))
+        .agg(F.coalesce(F.sum("n_removed_attack_events"), F.lit(0)).alias("total"))
+        .collect()[0]["total"]
+    )
 
     groups = (
         seqs.groupBy("day", "split_group_id")
@@ -578,8 +596,16 @@ def main() -> None:
         how="left",
     )
 
-    assignments_spark = spark.createDataFrame(
-        assignments_pdf[["day", "split_group_id", "split", "split_strategy", "split_seed"]]
+    assignments_join_path = output_dir_path / "sequence_assignments_for_join.tmp.csv"
+    assignments_pdf[["day", "split_group_id", "split", "split_strategy", "split_seed"]].to_csv(
+        assignments_join_path,
+        index=False,
+    )
+    assignments_spark = (
+        spark.read
+        .option("header", True)
+        .schema("day string, split_group_id string, split string, split_strategy string, split_seed int")
+        .csv(str(assignments_join_path))
     )
     seqs = seqs.join(assignments_spark, on=["day", "split_group_id"], how="inner")
 
@@ -599,6 +625,7 @@ def main() -> None:
             "seq_y",
             "seq_len",
             "full_seq_len",
+            "full_n_attack_events",
             "was_truncated",
             "n_events",
             "n_attack_events",
@@ -626,6 +653,7 @@ def main() -> None:
             "seq_y",
             "seq_len",
             "full_seq_len",
+            "full_n_attack_events",
             "was_truncated",
             "n_events",
             "n_attack_events",
@@ -654,6 +682,8 @@ def main() -> None:
 
     sequence_build_config = {
         "dataset_source": "Traffic Labelled / GeneratedLabelledFlows",
+        "sequence_build_version": SEQUENCE_BUILD_VERSION,
+        "event_counting_policy": EVENT_COUNTING_POLICY,
         "output_root": str(output_dir_path),
         "variant_id": sanitize_variant_id(
             entity_mode=args.entity_mode,
@@ -676,6 +706,7 @@ def main() -> None:
         "max_len_build": args.max_len_build,
         "capping_policy": "tail",
         "time_representation": "event_timestamp_seconds",
+        "label_scope": "retained_capped_trajectory",
         "prediction_targets_supported": ["seq_y", "y_seq"],
         "feature_columns": feature_cols,
         "spark_master": args.spark_master,
@@ -692,6 +723,7 @@ def main() -> None:
         "sequences_after_min_len_filter": int(sequences_after_min_filter),
         "sequences_dropped_short": int(sequences_dropped_short),
         "sequences_truncated_after_filter": int(truncated_sequences),
+        "truncated_attack_events_removed_after_capping": int(truncated_attack_events_removed),
         "n_split_groups": int(len(groups_pdf)),
         "n_attack_split_groups": int((groups_pdf["group_y"] == 1).sum()) if not groups_pdf.empty else 0,
         "n_benign_split_groups": int((groups_pdf["group_y"] == 0).sum()) if not groups_pdf.empty else 0,
@@ -709,6 +741,11 @@ def main() -> None:
         json.dump(preprocessing_stats, file_obj, indent=2)
 
     spark.stop()
+
+    try:
+        assignments_join_path.unlink(missing_ok=True)
+    except PermissionError:
+        pass
 
 
 if __name__ == "__main__":

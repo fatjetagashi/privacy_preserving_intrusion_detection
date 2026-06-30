@@ -49,6 +49,8 @@ def flatten_run(run_dir: Path) -> List[Dict[str, object]]:
 
     seq_build_config = run_config.get("sequence_build_config", {})
     variant_id = seq_build_config.get("variant_id", Path(run_config.get("data_root", run_dir.name)).name)
+    sequence_build_version = seq_build_config.get("sequence_build_version", "pre_versioned")
+    event_counting_policy = seq_build_config.get("event_counting_policy", "pre_versioned")
     threshold_free = test_metrics["threshold_free"]
 
     rows = []
@@ -64,6 +66,8 @@ def flatten_run(run_dir: Path) -> List[Dict[str, object]]:
                 "seed": run_config.get("seed"),
                 "data_root": run_config.get("data_root"),
                 "variant_id": variant_id,
+                "sequence_build_version": sequence_build_version,
+                "event_counting_policy": event_counting_policy,
                 "entity_mode": seq_build_config.get("entity_mode"),
                 "split_strategy": seq_build_config.get("split_strategy"),
                 "window_seconds": seq_build_config.get("window_seconds"),
@@ -111,6 +115,8 @@ def aggregate_metrics(raw_df: pd.DataFrame) -> pd.DataFrame:
     group_cols = [
         "model_name",
         "variant_id",
+        "sequence_build_version",
+        "event_counting_policy",
         "entity_mode",
         "split_strategy",
         "window_seconds",
@@ -166,6 +172,8 @@ def deduplicate_latest_runs(raw_df: pd.DataFrame) -> pd.DataFrame:
     dedupe_cols = [
         "model_name",
         "variant_id",
+        "sequence_build_version",
+        "event_counting_policy",
         "seed",
         "evaluation_mode",
         "data_root",
